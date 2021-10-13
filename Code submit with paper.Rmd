@@ -1,0 +1,3361 @@
+---
+title: "Mortality analysis"
+output: html_document
+---
+
+**TABLE FREQUENCIES**
+
+```{r table freq}
+
+library(foreign); library(haven); library(dplyr); library(tidyr); library(lubridate); library(arsenal);
+library(reshape2); library(ggplot2); library(lme4); library(MASS); library(sandwich); library(plyr); library(stringr) ; library(lemon);
+library(readxl); library(gmodels); 
+
+
+## *FILL OUT TABLES* ##
+
+# Table 1 - overall first column
+completedata_screen <- read.csv("NEO mortality dataset.csv")
+
+
+# Maternal age in years
+summary(completedata_screen$en_age)
+
+## Primigravida (first pregnancy)
+table(completedata_screen$group8en_pregnum, useNA = "ifany")
+completedata_screen <- completedata_screen %>% mutate(primigravida=ifelse(group8en_pregnum==1, 1, 0))
+table(completedata_screen$primigravida); prop.table(table(completedata_screen$primigravida))*100
+
+## own phone = No
+table(completedata_screen$te_sharestudyphone, useNA = "ifany"); prop.table(table(completedata_screen$te_sharestudyphone))*100
+
+## use SMS as primary mode of communication 
+completedata_screen <- completedata_screen %>% mutate(primarysms=ifelse(group14te_phonemode1=="SMS messaging", 1, 0))
+table(completedata_screen$primarysms); prop.table(table(completedata_screen$primarysms))*100
+
+## education >=8 years
+#table(completedata_screen$group5en_educyrs)
+#table(completedata_screen$educ8, completedata_screen$group5en_educyrs)
+completedata_screen <- completedata_screen %>% mutate(educ8=ifelse(group5en_educyrs==-2, NA, ifelse(group5en_educyrs>=8, 1, 0)))
+table(completedata_screen$educ8); prop.table(table(completedata_screen$educ8))*100
+
+## household income
+completedata_screen$monthincome <- ifelse(completedata_screen$group7en_monthincome==-2, NA, completedata_screen$group7en_monthincome)
+summary(completedata_screen$monthincome)
+
+# Pregnancy intention - preg was planned
+table(completedata_screen$fp_pregwant); prop.table(table(completedata_screen$fp_pregwant))
+
+## Distance from home to clinic
+table(completedata_screen$group7en_scale_clinictravel) # scale: Minutes (if <1 hour); Hours
+table(completedata_screen$group7en_clinictravelm) # numeric
+
+completedata_screen$distance <- ifelse(completedata_screen$group7en_scale_clinictravel=="Minutes (if <1 hour)", 
+                                       completedata_screen$group7en_clinictravelm,
+                                       completedata_screen$group7en_clinictravelm*60)
+summary(completedata_screen$distance)
+completedata_screen$distance1h <- ifelse(completedata_screen$distance==-2, NA, (ifelse(completedata_screen$distance>=60, 1, 0)))
+table(completedata_screen$distance1h, useNA = "ifany"); prop.table(table(completedata_screen$distance1h))
+
+# depression score
+summary(completedata_screen$dp13)
+table(completedata_screen$dp13, useNA = "ifany"); prop.table(table(completedata_screen$dp13)*100)
+
+# IPV 
+completedata_screen <- completedata_screen %>% mutate(ipv_lastyear = ifelse(ip_abuselastyr=="Yes" | group23ip_abuserecent == "Yes" | group24ip_sexabuse == "Yes", 1, 0))
+table(completedata_screen$ip_abuselastyr); prop.table(table(completedata_screen$ip_abuselastyr))
+
+# Calculate gestational age at enrollment
+completedata_screen$group1sc_gestage <- as.numeric(completedata_screen$group1sc_gestage)
+summary(completedata_screen$group1sc_gestage)
+
+## Marital status - currently Married/cohabiting
+table(completedata_screen$group5en_marital)
+
+completedata_screen <- completedata_screen %>% mutate(marry=ifelse(group5en_marital=="Currently married" | group5en_marital=="Come we stay", 1, ifelse(group5en_marital=="No answer", NA, 0)))
+table(completedata_screen$marry); prop.table(table(completedata_screen$marry))*100
+
+
+###########   variables among those with previous pregnancy #################
+## Obstetrical history - last delivered in health facility
+#overall
+#1= Delivered in health facility, 2=Home / friend or relative's home, 3=On the way to the health care facility, 4=Other, 5=Not applicable
+
+table(completedata_screen$dr_locationdel); prop.table(table(completedata_screen$dr_locationdel))
+
+
+# with 3 categories
+#completedata_screen$deliveryhf <- ifelse(completedata_screen$group11en_lastdelivloc==1,2,1)
+#completedata_screen$deliveryhf <- ifelse(is.na(completedata_screen$group11en_lastdelivloc),0,completedata_screen$deliveryhf)
+
+#table(completedata_screen$deliveryhf); prop.table(table(completedata_screen$deliveryhf))*100
+
+## History of pregnancy/child loss
+#overall
+table(completedata_screen$group10en_childrenlive, completedata_screen$group8en_pregnum, useNA = 'ifany')
+completedata_screen$group10en_childrenlive <- as.numeric(completedata_screen$group10en_childrenlive)
+
+completedata_screen <- completedata_screen %>% mutate(losshistory=ifelse(group10en_childrenlive+1 < group8en_pregnum, 1, 0))
+table(completedata_screen$losshistory); prop.table(table(completedata_screen$losshistory))*100
+
+
+#pregnancy loss
+data$pregloss <- ifelse(data$group10en_sponabortion>0,1,
+                        ifelse(data$group10en_elecabortion>0,1,
+                               ifelse(data$group10en_stillbirths>0,1,0)
+                        ))
+table(data$pregloss,data$group10en_sponabortion)
+table(data$pregloss,data$group10en_elecabortion)
+table(data$pregloss,data$group10en_stillbirths)
+
+table(data$pregloss); prop.table(table(data$pregloss))*100
+table(data$pregloss, data$group3en_scrid_site); prop.table(table(data$pregloss, data$group3en_scrid_site), margin=2)*100
+
+#baby loss
+table(data$group10en_childrendied)
+data$babyloss <- ifelse(data$group10en_childrendied>0,1,0)
+table(data$babyloss,data$group10en_childrendied)
+
+table(data$babyloss); prop.table(table(data$babyloss))*100
+table(data$babyloss, data$group3en_scrid_site); prop.table(table(data$babyloss, data$group3en_scrid_site), margin=2)*100
+
+## Delivery complications in last delivery
+# overall
+completedata_screen <- completedata_screen %>% 
+  mutate(delcomplication = ifelse(is.na(en_lastpregcomp1), NA, (ifelse(en_lastpregcomp1!="None", 1, 0))))
+
+table(completedata_screen$delcomplication, useNA = "ifany"); prop.table(table(completedata_screen$delcomplication))*100
+
+#############################################################################
+
+#Gestational age at birth - calculated from SMS data (more complete/accurate than from follow up data)
+
+# read in SMS data (details on how alldump created are in SMS_behavior R code)
+alldump <- read.csv("G:/Shared drives/Mobile WACh NEO PILOT/Analyses/Mortality analysis/Datasets/alldump.csv")
+
+#
+sms <- read_xlsx("G:/Shared drives/Mobile WACh NEO PILOT/Data/SystemDumps/MobileWACH_Neo_detail_2019-01-26.xlsx", 1)
+
+# remove the line with maternal death
+sms <- subset(sms, `Study ID`!="0179")
+
+sms$add_days <- as.numeric(difftime(sms$Delivery,sms$EDD, units="days"))
+
+# EDD based off of clinic staff using mathematical formula as reported in MCH
+sms$gestage_birth_sms <- (sms$add_days/7) + 40
+
+summary(sms$gestage_birth_sms)
+missing_delivery_sms <- sms %>% filter(is.na(Delivery)) %>% dplyr::select(`Study ID`, Delivery, gestage_birth_sms)
+
+
+stillbirthptid1 <- completedata_screen %>% filter(stillbirth==1) %>% dplyr::select(ptidno, stillbirth)
+
+library(stringr)
+
+# get stillbirth PTIDS so can see if they are in the SMS system
+stillbirthptid <- str_sub(stillbirthptid1[,1], -4, -1)
+stillbirthptid <- as.data.frame(stillbirthptid)
+
+names(stillbirthptid)[names(stillbirthptid) =="stillbirthptid"] <- "Study ID"
+
+stillbirthptid$stillbirth <- 1
+
+# see if any stillbirth PTIDs are the same as PTIDS with missing del dates in SMS system
+stillbirthmerge <- full_join(missing_delivery_sms, stillbirthptid, by= "Study ID")
+
+# there are no stillbirths among PTIDs with a missing delivery date in SMS system.
+length(unique(stillbirthmerge$`Study ID`))
+
+sms_stillbirth <- full_join(sms, stillbirthptid, by = "Study ID")
+
+livebirth <- sms_stillbirth %>% filter(is.na(stillbirth))
+
+# This is gestational age for live births (excluding stillbirths and 64 NAs that don't have delivery date in SMS system)
+summary(livebirth$gestage_birth_sms)
+length(which(!is.na(livebirth$gestage_birth_sms)))
+
+completedata_screen$`Study ID` <- str_sub(completedata_screen$ptidno, -4, -1)
+
+completedata_ga <- completedata_screen %>% dplyr::select(`Study ID`, group3en_scrid_site, gestage_birth) %>% 
+  left_join(., livebirth, by = "Study ID")
+
+summary(completedata_ga$gestage_birth_sms)
+
+
+######### Preterm birth vs. not
+
+completedata_ga$preterm <- ifelse(completedata_ga$gestage_birth_sms > 0 & completedata_ga$gestage_birth_sms < 37,1,ifelse(completedata_ga$gestage_birth_sms >=37 & completedata_ga$gestage_birth_sms < 60,0,NA))
+
+table(completedata_ga$preterm);prop.table(table(completedata_ga$preterm))
+
+
+# Multiple births
+table(completedata_screen$group3multibirth)
+prop.table(table(completedata_screen$group3multibirth))
+
+# facility delivery
+table(completedata_screen$dr_locationdel, exclude = NULL)
+prop.table(table(completedata_screen$dr_locationdel))
+
+
+
+# Table 1 - split by site
+
+by_site <- arrange(completedata_screen, group3en_scrid_site)
+
+table(completedata_screen$group3en_scrid_site)
+
+table(completedata_screen$group3en_scrid_site, completedata_screen$site_hand.y)
+
+# Maternal age in years
+
+mean(completedata_screen$en_age[completedata_screen$group3en_scrid_site=="Rachuonyo"], na.rm = TRUE);quantile(completedata_screen$en_age[completedata_screen$group3en_scrid_site=="Rachuonyo"], na.rm = TRUE)
+
+mean(completedata_screen$en_age[completedata_screen$group3en_scrid_site=="Mathare"], na.rm = TRUE);quantile(completedata_screen$en_age[completedata_screen$group3en_scrid_site=="Mathare"], na.rm = TRUE)
+summary(completedata_screen$en_age[completedata_screen$group3en_scrid_site=="Mathare"], useNA = "ifany")
+
+#get n
+completedata_screen %>% 
+  filter(!is.na(en_age)) %>% 
+  group_by(group3en_scrid_site) %>% 
+  summarize(nobs = n())
+
+
+t_test <- t.test(completedata_screen$en_age[completedata$group3en_scrid_site=="Mathare"], completedata_screen$en_age[completedata$group3en_scrid_site=="Rachuonyo"], var.equal = TRUE)
+t_test
+
+## Primigravida (first pregnancy)
+table(completedata_screen$primigravida[completedata_screen$group3en_scrid_site=="Rachuonyo"]); prop.table(table(completedata_screen$primigravida[completedata_screen$group3en_scrid_site=="Rachuonyo"]))*100
+
+table(completedata_screen$primigravida[completedata_screen$group3en_scrid_site=="Mathare"]); prop.table(table(completedata_screen$primigravida[completedata_screen$group3en_scrid_site=="Mathare"]))*100
+
+prop_test <- prop.test(x = c(96, 197), n = c(304, 493))
+prop_test 
+
+## own phone = No
+table(completedata_screen$te_sharestudyphone[completedata_screen$group3en_scrid_site=="Rachuonyo"]); prop.table(table(completedata_screen$te_sharestudyphone[completedata_screen$group3en_scrid_site=="Rachuonyo"]))*100
+
+table(completedata_screen$te_sharestudyphone[completedata_screen$group3en_scrid_site=="Mathare"]); prop.table(table(completedata_screen$te_sharestudyphone[completedata_screen$group3en_scrid_site=="Mathare"]))*100
+
+prop_test <- prop.test(x =c(226, 430), n = c(304, 493))
+prop_test 
+
+## use SMS as primary mode of communication 
+completedata_screen <- completedata_screen %>% mutate(primarysms=ifelse(group14te_phonemode1=="SMS messaging", 1, 0))
+table(completedata_screen$primarysms[completedata_screen$group3en_scrid_site=="Rachuonyo"]); prop.table(table(completedata_screen$primarysms[completedata_screen$group3en_scrid_site=="Rachuonyo"]))*100
+
+table(completedata_screen$primarysms[completedata_screen$group3en_scrid_site=="Mathare"]); prop.table(table(completedata_screen$primarysms[completedata_screen$group3en_scrid_site=="Mathare"]))*100
+
+prop_test <- prop.test(x = c(256, 476), n = c(304, 493))
+prop_test 
+
+## education >=8 years
+completedata_screen <- completedata_screen %>% mutate(educ8=ifelse(group5en_educyrs>=8, 1, 0))
+table(completedata_screen$educ8[completedata_screen$group3en_scrid_site=="Rachuonyo"]); prop.table(table(completedata_screen$educ8[completedata_screen$group3en_scrid_site=="Rachuonyo"]))*100
+
+table(completedata_screen$educ8[completedata_screen$group3en_scrid_site=="Mathare"]); prop.table(table(completedata_screen$educ8[completedata_screen$group3en_scrid_site=="Mathare"]))*100
+
+prop_test <- prop.test(x = c(278, 469), n = c(304, 493))
+prop_test 
+
+## household income
+
+with(by_site, aggregate(monthincome, by=list(group3en_scrid_site) , FUN=quantile, na.rm = TRUE))
+
+# to get n's
+by_site %>% 
+  filter(!is.na(group3en_scrid_site), monthincome) %>% 
+  group_by(group3en_scrid_site) %>% 
+  summarise(nobs = n())
+
+t_test <- t.test(completedata_screen$monthincome[completedata_screen$group3en_scrid_site=="Mathare"], completedata_screen$monthincome[completedata_screen$group3en_scrid_site=="Rachuonyo"], var.equal = TRUE)
+t_test
+
+
+# Pregnancy intention - preg was planned
+table(completedata_screen$fp_pregwant[completedata_screen$group3en_scrid_site=="Rachuonyo"]); prop.table(table(completedata_screen$fp_pregwant[completedata_screen$group3en_scrid_site=="Rachuonyo"]))
+
+table(completedata_screen$fp_pregwant[completedata_screen$group3en_scrid_site=="Mathare"]); prop.table(table(completedata_screen$fp_pregwant[completedata_screen$group3en_scrid_site=="Mathare"]))
+
+prop_test <- prop.test(x = c(169, 344), n = c(304, 493))
+prop_test 
+
+# Delivery location
+
+table(completedata_screen$dr_locationdel[completedata_screen$group3en_scrid_site=="Rachuonyo"]);prop.table(table(completedata_screen$dr_locationdel[completedata_screen$group3en_scrid_site=="Rachuonyo"]))
+
+table(completedata_screen$dr_locationdel[completedata_screen$group3en_scrid_site=="Mathare"]);prop.table(table(completedata_screen$dr_locationdel[completedata_screen$group3en_scrid_site=="Mathare"]))
+
+prop_test <- prop.test(x = c(422, 222), n = c(427, 227))
+prop_test 
+
+## Distance from home to clinic
+table(completedata_screen$group7en_scale_clinictravel) # scale: Minutes (if <1 hour); Hours
+table(completedata_screen$group7en_clinictravelm) # numeric
+
+completedata_screen$distance <- ifelse(completedata_screen$group7en_scale_clinictravel=="Minutes (if <1 hour)", 
+                                       completedata_screen$group7en_clinictravelm,
+                                       completedata_screen$group7en_clinictravelm*60)
+summary(completedata_screen$distance)
+completedata_screen$distance1h <- ifelse(completedata_screen$distance>=60, 1, 0)
+
+table(completedata_screen$distance1h[completedata_screen$group3en_scrid_site=="Rachuonyo"]); prop.table(table(completedata_screen$distance1h[completedata_screen$group3en_scrid_site=="Rachuonyo"]))
+
+table(completedata_screen$distance1h[completedata_screen$group3en_scrid_site=="Mathare"]); prop.table(table(completedata_screen$distance1h[completedata_screen$group3en_scrid_site=="Mathare"]))
+
+prop_test <- prop.test(x = c(133, 77), n = c(303, 493))
+prop_test 
+
+# depression score
+table(completedata_screen$dp13[completedata_screen$group3en_scrid_site=="Rachuonyo"]); prop.table(table(completedata_screen$dp13[completedata_screen$group3en_scrid_site=="Rachuonyo"])*100)
+
+table(completedata_screen$dp13[completedata_screen$group3en_scrid_site=="Mathare"]); prop.table(table(completedata_screen$dp13[completedata_screen$group3en_scrid_site=="Mathare"])*100)
+
+prop_test <- prop.test(x = c(174, 82), n = c(304, 493))
+prop_test
+
+# IPV 
+table(completedata_screen$ip_abuselastyr[completedata_screen$group3en_scrid_site=="Rachuonyo"]); prop.table(table(completedata_screen$ip_abuselastyr[completedata_screen$group3en_scrid_site=="Rachuonyo"]))
+
+table(completedata_screen$ip_abuselastyr[completedata_screen$group3en_scrid_site=="Mathare"]); prop.table(table(completedata_screen$ip_abuselastyr[completedata_screen$group3en_scrid_site=="Mathare"]))
+
+prop_test <- prop.test(x = c(29, 26), n = c(304, 493))
+prop_test
+
+# Calculate gestational age at enrollment
+with(by_site, aggregate(group1sc_gestage , by=list(group3en_scrid_site) , FUN=quantile, na.rm = TRUE))
+
+length(completedata_screen$group1sc_gestage[by_site$group3en_scrid_site=="Mathare"])
+
+length(completedata_screen$group1sc_gestage[by_site$group3en_scrid_site=="Rachuonyo"])
+
+t_test <- t.test(completedata_screen$group1sc_gestage[completedata_screen$group3en_scrid_site=="Mathare"], completedata_screen$group1sc_gestage[completedata_screen$group3en_scrid_site=="Rachuonyo"], var.equal = TRUE)
+t_test
+
+## Marital status - currently Married/cohabiting
+table(completedata_screen$marry[completedata_screen$group3en_scrid_site=="Rachuonyo"]); prop.table(table(completedata_screen$marry[completedata_screen$group3en_scrid_site=="Rachuonyo"]))*100
+
+table(completedata_screen$marry[completedata_screen$group3en_scrid_site=="Mathare"]); prop.table(table(completedata_screen$marry[completedata_screen$group3en_scrid_site=="Mathare"]))*100
+
+prop_test <- prop.test(x = c(249, 434), n = c(292, 492))
+prop_test
+
+# Gestational age at birth
+summary(completedata_ga$gestage_birth_sms[completedata_ga$group3en_scrid_site=="Rachuonyo"])
+
+summary(completedata_ga$gestage_birth_sms[completedata_ga$group3en_scrid_site=="Mathare"])
+
+t_test <- t.test(completedata_ga$gestage_birth_sms[completedata_ga$group3en_scrid_site=="Mathare"], completedata_ga$gestage_birth_sms[completedata_ga$group3en_scrid_site=="Rachuonyo"], var.equal = TRUE)
+t_test
+
+# Multiple births
+table(completedata_screen$group3multibirth[completedata_screen$group3en_scrid_site=="Rachuonyo"])
+prop.table(table(completedata_screen$group3multibirth[completedata_screen$group3en_scrid_site=="Rachuonyo"]))
+
+table(completedata_screen$group3multibirth[completedata_screen$group3en_scrid_site=="Mathare"])
+prop.table(table(completedata_screen$group3multibirth[completedata_screen$group3en_scrid_site=="Mathare"]))
+
+prop_test <- prop.test(x = c(2, 3), n = c(107, 156))
+prop_test
+
+summary(completedata_screen$gestage_birth)
+
+######### Preterm birth vs. not
+
+table(completedata_ga$preterm[completedata_ga$group3en_scrid_site=="Rachuonyo"]);prop.table(table(completedata_ga$preterm[completedata_ga$group3en_scrid_site=="Rachuonyo"]))
+
+table(completedata_ga$preterm[completedata_ga$group3en_scrid_site=="Mathare"]);prop.table(table(completedata_ga$preterm[completedata_ga$group3en_scrid_site=="Mathare"]))
+
+prop_test <- prop.test(x = c(49, 83), n = c(259, 459))
+prop_test 
+
+
+###########   variables among those with previous pregnancy #################
+## Obstetrical history - last delivered in health facility
+#overall
+table(completedata_screen$group11en_lastdelivloc[completedata_screen$group3en_scrid_site=="Rachuonyo"]); prop.table(table(completedata_screen$group11en_lastdelivloc[completedata_screen$group3en_scrid_site=="Rachuonyo"]))
+
+table(completedata_screen$group11en_lastdelivloc[completedata_screen$group3en_scrid_site=="Mathare"]); prop.table(table(completedata_screen$group11en_lastdelivloc[completedata_screen$group3en_scrid_site=="Mathare"]))
+
+prop_test <- prop.test(x = c(175, 235), n = c(205, 299))
+prop_test
+
+
+## History of pregnancy/child loss
+#overall
+completedata_screen <- completedata_screen %>% mutate(losshistory=ifelse(group10en_childrenlive+1 < group8en_pregnum, 1, 0))
+table(completedata_screen$losshistory[completedata_screen$group3en_scrid_site=="Rachuonyo"]); prop.table(table(completedata_screen$losshistory[completedata_screen$group3en_scrid_site=="Rachuonyo"]))*100
+
+table(completedata_screen$losshistory[completedata_screen$group3en_scrid_site=="Mathare"]); prop.table(table(completedata_screen$losshistory[completedata_screen$group3en_scrid_site=="Mathare"]))*100
+
+prop_test <- prop.test(x = c(40, 82), n = c(205, 299))
+prop_test
+
+## Delivery complications in last delivery
+table(completedata_screen$delcomplication[completedata_screen$group3en_scrid_site=="Rachuonyo"]); prop.table(table(completedata_screen$delcomplication[completedata_screen$group3en_scrid_site=="Rachuonyo"]))*100
+
+table(completedata_screen$delcomplication[completedata_screen$group3en_scrid_site=="Mathare"]); prop.table(table(completedata_screen$delcomplication[completedata_screen$group3en_scrid_site=="Mathare"]))*100
+
+prop_test <- prop.test(x = c(18, 30), n = c(205, 299))
+prop_test
+
+table(completedata_screen$en_lastpregcomp1)
+
+# Table 1A: Outcomes table
+
+############## perinatal death ######################
+# remove the 2 PTIDs from death that had death > 28 weeks
+completedata_screen %>% 
+  filter(Subject.of.SAE=="Infant" & SAE.Type == "Death") %>% 
+  select(ptidno, Age.at.death) %>% 
+  head(20) 
+
+completedata_screen$perideaths <- ifelse(completedata_screen$Subject.of.SAE=="Infant" & ((completedata_screen$SAE.Type == "Death" & (completedata_screen$ptidno!= 42110318|completedata_screen$ptidno!=42460687)) |completedata_screen$SAE.Type == "Stillbirth" |completedata_screen$SAE.Type =="IUFD"),1,0)
+
+completedata_screen$perideaths[is.na(completedata_screen$perideaths)] <- 0
+completedata_screen$perideaths[completedata_screen$ptidno==42110318| completedata_screen$ptidno==42460687] <- NA
+
+#Overall
+table(completedata_screen$perideaths);
+prop.table(table(completedata_screen$perideaths))
+
+#By site
+table(completedata_screen$perideaths[completedata_screen$group3en_scrid_site == "Rachuonyo"])
+prop.table(table(completedata_screen$perideaths[completedata_screen$group3en_scrid_site=="Rachuonyo"]))
+
+table(completedata_screen$perideaths[completedata_screen$group3en_scrid_site=="Mathare"])
+prop.table(table(completedata_screen$perideaths[completedata_screen$group3en_scrid_site=="Mathare"]))*100
+
+################## Neonatal death #####################
+
+completedata_screen$neodeath <- ifelse(completedata_screen$Subject.of.SAE=="Infant" & completedata_screen$SAE.Type == "Death",1,0)
+
+completedata_screen$neodeath[is.na(completedata_screen$neodeath)] <- 0
+
+completedata_screen$neodeath[completedata_screen$ptidno==42110318] <- NA
+completedata_screen$neodeath[completedata_screen$ptidno==42460687] <- NA
+completedata_screen$neodeath[completedata_screen$SAE.Type=="IUFD"] <- NA
+completedata_screen$neodeath[completedata_screen$SAE.Type=="Stillbirth"] <- NA
+
+table(completedata_screen$neodeath, completedata_screen$SAE.Type, useNA = "ifany")
+table(completedata_screen$neodeath)
+
+#Overall
+table(completedata_screen$neodeath); prop.table(table(completedata_screen$neodeath))
+
+#By site
+table(completedata_screen$neodeath[completedata_screen$group3en_scrid_site == "Rachuonyo"])
+prop.table(table(completedata_screen$neodeath[completedata_screen$group3en_scrid_site=="Rachuonyo"]))*100
+
+table(completedata_screen$neodeath[completedata_screen$group3en_scrid_site=="Mathare"])
+prop.table(table(completedata_screen$neodeath[completedata_screen$group3en_scrid_site=="Mathare"]))*100
+
+################## Stillbirths/IUFD ###################
+
+completedata_screen$stillbirth <- ifelse(completedata_screen$Subject.of.SAE=="Infant" & (completedata_screen$SAE.Type == "Stillbirth"| completedata_screen$SAE.Type == "IUFD"),1,0)
+
+completedata_screen$stillbirth[is.na(completedata_screen$stillbirth)] <- 0
+sum(completedata_screen$stillbirth)
+
+#Overall
+table(completedata_screen$stillbirth); prop.table(table(completedata_screen$stillbirth))
+
+#By site
+table(completedata_screen$stillbirth[completedata_screen$group3en_scrid_site == "Rachuonyo"])
+prop.table(table(completedata_screen$stillbirth[completedata_screen$group3en_scrid_site=="Rachuonyo"]))*100
+
+table(completedata_screen$stillbirth[completedata_screen$group3en_scrid_site=="Mathare"])
+prop.table(table(completedata_screen$stillbirth[completedata_screen$group3en_scrid_site=="Mathare"]))*100
+
+
+################## Hospitalizations ###################
+
+completedata_screen$hosp <- ifelse(completedata_screen$Subject.of.SAE=="Infant" & completedata_screen$SAE.Type == "Hospitalization"| completedata_screen$ptidno==42460687,1,0)
+
+
+completedata_screen$hosp[is.na(completedata_screen$hosp)] <- 0
+
+hosp <- completedata_screen %>% filter(hosp ==1) %>% dplyr::select(ptidno, Subject.of.SAE, SAE.Type, SAE.Description)
+
+
+# This is to take out IUFD, stillbirth, and all infant deaths from denominator
+completedata_screen$hosp[completedata_screen$SAE.Type=="IUFD"] <- NA
+completedata_screen$hosp[completedata_screen$SAE.Type=="Stillbirth"] <- NA
+completedata_screen$hosp[completedata_screen$SAE.Type=="Death" & completedata_screen$ptidno!=42460687] <- NA
+
+# these two patient IDs were maternal hospitalizations, so can recode as 0 for infant hospitalization outcome
+completedata_screen$hosp[completedata_screen$ptidno==42110052] <- 0
+completedata_screen$hosp[completedata_screen$ptidno==42110078] <- 0
+
+# had an extended hospitalization at birth (not an “after discharge” hospitalization), so we should remove that baby from this category (from qualitative analysis that Anna conducted)
+completedata_screen$hosp[completedata_screen$ptidno==42460633] <- 0
+
+# checked the SAE CRF and it confirmed the patient wasn’t discharged home before the care for fever/ dehydration/jaundice
+completedata_screen$hosp[completedata_screen$ptidno==42110054] <- 0
+
+#Overall
+table(completedata_screen$hosp)
+prop.table(table(completedata_screen$hosp))
+
+#By site
+table(completedata_screen$hosp[completedata_screen$group3en_scrid_site == "Rachuonyo"])
+prop.table(table(completedata_screen$hosp[completedata_screen$group3en_scrid_site=="Rachuonyo"]))
+
+table(completedata_screen$hosp[completedata_screen$group3en_scrid_site=="Mathare"])
+prop.table(table(completedata_screen$hosp[completedata_screen$group3en_scrid_site=="Mathare"]))
+
+prop_test <- prop.test(x = c(11, 2), n = c(472, 294))
+prop_test
+
+
+
+# AIM 2 table: Risk factors for hospitalization vs no death or no hospitalization
+hospitaliz1 <- completedata_screen %>% filter(hosp==1)
+
+# Maternal age in years
+summary(hospitaliz1$en_age)
+
+## Primigravida (first pregnancy)
+table(hospitaliz1$primigravida); prop.table(table(hospitaliz1$primigravida))*100
+
+## own phone = No
+table(hospitaliz1$te_sharestudyphone); prop.table(table(hospitaliz1$te_sharestudyphone))*100
+
+## use SMS as primary mode of communication 
+table(hospitaliz1$primarysms); prop.table(table(hospitaliz1$primarysms))*100
+
+## education >=8 years
+table(hospitaliz1$educ8); prop.table(table(hospitaliz1$educ8))*100
+
+## household income
+summary(hospitaliz1$monthincome)
+
+# Family planning - ever used
+table(hospitaliz1$fp_fpever); prop.table(table(hospitaliz1$fp_fpever))
+
+# Pregnancy intention - preg was planned
+table(hospitaliz1$fp_pregwant); prop.table(table(hospitaliz1$fp_pregwant))
+
+## Distance from home to clinic
+table(hospitaliz1$distance1h); prop.table(table(hospitaliz1$distance1h))
+
+# depression score
+table(hospitaliz1$dp10); prop.table(table(hospitaliz1$dp10)*100)
+
+# IPV 
+hospitaliz1 <- hospitaliz1 %>% mutate(ipv_lastyear = ifelse(ip_abuselastyr=="Yes" | group23ip_abuserecent == "Yes" | group24ip_sexabuse == "Yes", 1, 0))
+table(hospitaliz1$ip_abuselastyr); prop.table(table(hospitaliz1$ip_abuselastyr))
+
+# Calculate gestational age at enrollment
+summary(hospitaliz1_screen$group1sc_gestage)
+
+## Marital status - currently Married/cohabiting
+table(hospitaliz1$marry); prop.table(table(hospitaliz1$marry))*100
+
+############################################################################
+###########   variables among those with previous pregnancy #################
+## Obstetrical history - last delivered in health facility
+#overall
+table(hospitaliz1$group11en_lastdelivloc); prop.table(table(hospitaliz1$group11en_lastdelivloc))
+
+## History of pregnancy/child loss
+#overall
+table(hospitaliz1$group10en_childrenlive, hospitaliz1$group8en_pregnum, useNA = 'ifany')
+hospitaliz1 <- hospitaliz1 %>% mutate(losshistory=ifelse(group10en_childrenlive+1 < group8en_pregnum, 1, 0))
+table(hospitaliz1$losshistory); prop.table(table(hospitaliz1$losshistory))*100
+
+
+hospitaliz1$losshistory <- ifelse(is.na(hospitaliz1$group10en_childrenlive),0,hospitaliz1$losshistory)
+table(hospitaliz1$losshistory); prop.table(table(hospitaliz1$losshistory))*100
+
+## Delivery complications in last delivery
+# overall
+hospitaliz1 <- hospitaliz1 %>% mutate(delcomplication = ifelse(en_lastpregcomp1!="None", 1, 0))
+
+table(hospitaliz1$delcomplication); prop.table(table(hospitaliz1$delcomplication))*100
+
+table(hospitaliz1$en_lastpregcomp1)
+#############################################################################
+
+# Calculate gestational age at birth for hospitalizations
+summary(hospitaliz1$gestage_birth)
+
+######### Preterm birth vs. not
+table(hospitaliz1$preterm);prop.table(table(hospitaliz1$preterm))
+
+# Multiple births
+table(hospitaliz1$group3multibirth)
+
+
+# Aim 2 Table: Hospitalization. Second column - Alive1
+
+#######################
+nosae <- completedata_screen %>% filter(hosp==0)
+
+# Calculate gestational age at enrollment
+summary(nosae$group1sc_gestage)
+
+
+#######################
+
+# Maternal age in years
+summary(nosae$en_age)
+
+## Primigravida (first pregnancy)
+table(nosae$primigravida); prop.table(table(nosae$primigravida))*100
+
+## own phone = No
+table(nosae$te_sharestudyphone); prop.table(table(nosae$te_sharestudyphone))*100
+
+## use SMS as primary mode of communication 
+table(nosae$primarysms); prop.table(table(nosae$primarysms))*100
+
+## education >=8 years
+table(nosae$educ8); prop.table(table(nosae$educ8))*100
+
+## household income
+summary(nosae$monthincome)
+
+
+# Pregnancy intention - preg was planned
+table(nosae$fp_pregwant); prop.table(table(nosae$fp_pregwant))
+
+
+## Distance from home to clinic
+table(nosae$distance1h); prop.table(table(nosae$distance1h))
+
+# depression score
+table(nosae$dp10); prop.table(table(nosae$dp10)*100)
+
+# IPV 
+nosae <- nosae %>% mutate(ipv_lastyear = ifelse(ip_abuselastyr=="Yes" | group23ip_abuserecent == "Yes" | group24ip_sexabuse == "Yes", 1, 0))
+table(nosae$ip_abuselastyr); prop.table(table(nosae$ip_abuselastyr))
+
+## Marital status - currently Married/cohabiting
+table(nosae$marry); prop.table(table(nosae$marry))*100
+
+############################################################################
+###########   variables among those with previous pregnancy #################
+## Obstetrical history - last delivered in health facility
+#overall
+table(nosae$group11en_lastdelivloc); prop.table(table(nosae$group11en_lastdelivloc))
+
+# with 3 categories
+#nosae$deliveryhf <- ifelse(nosae$group11en_lastdelivloc==1,2,1)
+#nosae$deliveryhf <- ifelse(is.na(nosae$group11en_lastdelivloc),0,nosae$deliveryhf)
+
+#table(nosae$deliveryhf); prop.table(table(nosae$deliveryhf))
+
+## History of pregnancy/child loss
+#overall
+table(nosae$group10en_childrenlive, nosae$group8en_pregnum, useNA = 'ifany')
+nosae <- nosae %>% mutate(losshistory=ifelse(group10en_childrenlive+1 < group8en_pregnum, 1, 0))
+table(nosae$losshistory); prop.table(table(nosae$losshistory))*100
+
+## Delivery complications in last delivery
+# overall
+nosae <- nosae %>% mutate(delcomplication = ifelse(en_lastpregcomp1!="None", 1, 0))
+
+table(nosae$delcomplication); prop.table(table(nosae$delcomplication))*100
+
+#############################################################################
+
+## Gestational age at birth
+summary(nosae$gestage_birth)
+
+######### Preterm birth vs. not
+table(nosae$preterm);prop.table(table(nosae$preterm))
+
+# Multiple births
+table(nosae$group3multibirth);
+prop.table(table(nosae$group3multibirth))
+
+
+
+# AIM 1 table: Risk factors for perinatal death
+# First column - perinatal deaths (stillbirths+IUFD+neonatal death) n=30
+
+perideaths <- completedata_screen %>% filter(perideaths==1)
+# Maternal age in years
+summary(perideaths$en_age)
+
+## Primigravida (first pregnancy)
+table(perideaths$primigravida); prop.table(table(perideaths$primigravida))*100
+
+## own phone = No
+table(perideaths$te_sharestudyphone); prop.table(table(perideaths$te_sharestudyphone))*100
+
+## use SMS as primary mode of communication 
+table(perideaths$primarysms); prop.table(table(perideaths$primarysms))*100
+
+## education >=8 years
+table(perideaths$educ8); prop.table(table(perideaths$educ8))*100
+
+## household income
+summary(perideaths$monthincome)
+
+# Pregnancy intention - preg was planned
+table(perideaths$fp_pregwant); prop.table(table(perideaths$fp_pregwant))
+
+## Distance from home to clinic
+table(perideaths$group7en_scale_clinictravel) # scale: Minutes (if <1 hour); Hours
+table(perideaths$distance1h); prop.table(table(perideaths$distance1h))
+
+# depression score
+table(perideaths$dp10); prop.table(table(perideaths$dp10)*100)
+
+# IPV 
+table(perideaths$ip_abuselastyr); prop.table(table(perideaths$ip_abuselastyr))
+
+# Calculate gestational age at enrollment
+summary(perideaths$group1sc_gestage)
+
+## Marital status - currently Married/cohabiting
+table(perideaths$marry); prop.table(table(perideaths$marry))*100
+
+############################################################################
+###########   variables among those with previous pregnancy #################
+## Obstetrical history - last delivered in health facility
+#overall
+table(perideaths$group11en_lastdelivloc); prop.table(table(perideaths$group11en_lastdelivloc))
+
+## History of pregnancy/child loss
+#overall
+table(perideaths$losshistory); prop.table(table(perideaths$losshistory))*100
+
+## Delivery complications in last delivery
+# overall
+table(perideaths$delcomplication); prop.table(table(perideaths$delcomplication))*100
+
+## Gestational age at birth
+summary(perideaths$gestage_birth)
+
+######### Preterm birth vs. not
+table(perideaths$preterm);prop.table(table(perideaths$preterm))
+
+# Multiple births
+table(perideaths$group3multibirth);
+prop.table(table(perideaths$group3multibirth))
+
+
+# Aim 1 and 1A: no perinatal or neonatal death 
+# Second column
+
+noperideath <- completedata_screen %>% filter(perideaths==0)
+
+table(noperideath$perideaths)
+
+# Calculate gestational age at enrollment
+summary(noperideath$group1sc_gestage)
+
+##############################
+
+# Maternal age in years
+summary(noperideath$en_age)
+
+## Primigravida (first pregnancy)
+table(noperideath$primigravida); prop.table(table(noperideath$primigravida))*100
+
+## own phone = No
+table(noperideath$te_sharestudyphone); prop.table(table(noperideath$te_sharestudyphone))*100
+
+## use SMS as primary mode of communication 
+table(noperideath$primarysms); prop.table(table(noperideath$primarysms))*100
+
+## education >=8 years
+table(noperideath$educ8); prop.table(table(noperideath$educ8))*100
+
+## household income
+summary(noperideath$monthincome)
+
+# Pregnancy intention - preg was planned
+table(noperideath$fp_pregwant); prop.table(table(noperideath$fp_pregwant))
+
+## Distance from home to clinic
+table(noperideath$distance1h); prop.table(table(noperideath$distance1h))
+
+# depression score
+table(noperideath$dp13); prop.table(table(noperideath$dp13)*100)
+
+# IPV 
+table(noperideath$ip_abuselastyr); prop.table(table(noperideath$ip_abuselastyr))
+
+## Marital status - currently Married/cohabiting
+table(noperideath$marry); prop.table(table(noperideath$marry))*100
+
+
+###########   variables among those with previous pregnancy #################
+## Obstetrical history - last delivered in health facility
+#overall
+table(noperideath$group11en_lastdelivloc); prop.table(table(noperideath$group11en_lastdelivloc))
+
+## History of pregnancy/child loss
+#overall
+table(noperideath$losshistory); prop.table(table(noperideath$losshistory))*100
+
+## Delivery complications in last delivery
+# overall
+table(noperideath$delcomplication); prop.table(table(noperideath$delcomplication))*100
+
+#############################################################################
+
+## Gestational age at birth
+summary(noperideath$gestage_birth)
+
+######### Preterm birth vs. not
+table(noperideath$preterm);prop.table(table(noperideath$preterm))
+
+# Multiple births
+table(noperideath$group3multibirth);prop.table(table(noperideath$group3multibirth))
+
+# AIM 1A table: Risk factors for neonatal death
+# First column - neonatal deaths (stillbirths+IUFD+neonatal death)
+
+
+deaths <- completedata_screen %>% filter(neodeath==1)
+# Maternal age in years
+summary(deaths$en_age)
+
+## Primigravida (first pregnancy)
+table(deaths$primigravida); prop.table(table(deaths$primigravida))*100
+
+## own phone = No
+table(deaths$te_sharestudyphone); prop.table(table(deaths$te_sharestudyphone))*100
+
+## use SMS as primary mode of communication 
+table(deaths$primarysms); prop.table(table(deaths$primarysms))*100
+
+## education >=8 years
+table(deaths$educ8); prop.table(table(deaths$educ8))*100
+
+## household income
+summary(deaths$monthincome)
+
+# Pregnancy intention - preg was planned
+table(deaths$fp_pregwant); prop.table(table(deaths$fp_pregwant))*100
+
+
+## Distance from home to clinic
+table(deaths$distance1h); prop.table(table(deaths$distance1h))*100
+
+# depression score
+table(deaths$dp13); prop.table(table(deaths$dp13)*100)
+
+# IPV 
+table(deaths$ip_abuselastyr); prop.table(table(deaths$ip_abuselastyr))*100
+
+# Gestational age at enrollment
+summary(deaths$group1sc_gestage)
+
+## Marital status - currently Married/cohabiting
+table(deaths$marry); prop.table(table(deaths$marry))*100
+
+############################################################################
+###########   variables among those with previous pregnancy #################
+## Obstetrical history - last delivered in health facility
+#overall
+table(deaths$group11en_lastdelivloc); prop.table(table(deaths$group11en_lastdelivloc))
+
+## History of pregnancy/child loss
+#overall
+table(deaths$losshistory); prop.table(table(deaths$losshistory))*100
+
+## Delivery complications in last delivery
+# overall
+deaths <- deaths %>% mutate(delcomplication = ifelse(en_lastpregcomp1!="None", 1, 0))
+
+table(deaths$delcomplication); prop.table(table(deaths$delcomplication))*100
+
+#############################################################################
+
+## Gestational age at birth
+summary(deaths$gestage_birth)
+table(deaths$gestage_birth)
+
+######### Preterm birth vs. not
+table(deaths$preterm);prop.table(table(deaths$preterm))
+
+
+# Multiple births
+table(deaths$group3multibirth);
+prop.table(table(deaths$group3multibirth))
+
+
+# AIM 1B table: Risk factors for IUFD, stillbirths
+# First column - stillbirths/IUFD n=13
+
+stillbirths <- completedata_screen %>% filter(stillbirth==1)
+
+# Maternal age in years
+summary(stillbirths$en_age)
+
+## Primigravida (first pregnancy)
+table(stillbirths$primigravida); prop.table(table(stillbirths$primigravida))*100
+
+## own phone = No
+table(stillbirths$te_sharestudyphone); prop.table(table(stillbirths$te_sharestudyphone))*100
+
+## use SMS as primary mode of communication 
+table(stillbirths$primarysms); prop.table(table(stillbirths$primarysms))*100
+
+## education >=8 years
+table(stillbirths$educ8); prop.table(table(stillbirths$educ8))*100
+
+## household income
+summary(stillbirths$monthincome)
+
+# Pregnancy intention - preg was planned
+table(stillbirths$fp_pregwant); prop.table(table(stillbirths$fp_pregwant))*100
+
+
+## Distance from home to clinic
+table(stillbirths$distance1h); prop.table(table(stillbirths$distance1h))*100
+
+# depression score
+table(stillbirths$dp13); prop.table(table(stillbirths$dp13)*100)
+
+# IPV 
+table(stillbirths$ip_abuselastyr); prop.table(table(stillbirths$ip_abuselastyr))*100
+
+# Calculate gestational age at enrollment
+summary(stillbirths$group1sc_gestage)
+
+## Marital status - currently Married/cohabiting
+table(stillbirths$marry); prop.table(table(stillbirths$marry))*100
+
+############################################################################
+###########   variables among those with previous pregnancy #################
+## Obstetrical history - last delivered in health facility
+#overall
+table(stillbirths$group11en_lastdelivloc); prop.table(table(stillbirths$group11en_lastdelivloc))
+
+## History of pregnancy/child loss
+#overall
+table(stillbirths$group10en_childrenlive, stillbirths$group8en_pregnum, useNA = 'ifany')
+stillbirths <- stillbirths %>% mutate(losshistory=ifelse(group10en_childrenlive+1 < group8en_pregnum, 1, 0))
+table(stillbirths$losshistory); prop.table(table(stillbirths$losshistory))*100
+
+## Delivery complications in last delivery
+# overall
+stillbirths <- stillbirths %>% mutate(delcomplication = ifelse(en_lastpregcomp1!="None", 1, 0))
+
+table(stillbirths$delcomplication); prop.table(table(stillbirths$delcomplication))*100
+
+#############################################################################
+# Calculate gestational age at birth for IUFD stillbirths
+summary(stillbirths$gestage_birth)
+
+######### Preterm birth vs. not
+table(stillbirths$preterm);prop.table(table(stillbirths$preterm))
+
+
+# Multiple births
+table(stillbirths$group3multibirth);
+prop.table(table(stillbirths$group3multibirth))
+
+
+# AIM 1B table: Risk factors for IUFD, stillbirths
+# Second column - Live births (Death 1-4, Alive 1&2)
+
+livebirths <- completedata_screen %>% filter(stillbirth==0)
+# Calculate gestational age at enrollment
+summary(livebirths_screen$group1sc_gestage)
+##############################
+
+# Maternal age in years
+summary(livebirths$en_age)
+
+## Primigravida (first pregnancy)
+table(livebirths$primigravida); prop.table(table(livebirths$primigravida))*100
+
+## own phone = No
+table(livebirths$te_sharestudyphone); prop.table(table(livebirths$te_sharestudyphone))*100
+
+## use SMS as primary mode of communication 
+table(livebirths$primarysms); prop.table(table(livebirths$primarysms))*100
+
+## education >=8 years
+table(livebirths$educ8); prop.table(table(livebirths$educ8))*100
+
+## household income
+summary(livebirths$monthincome)
+
+
+# Pregnancy intention - preg was planned
+table(livebirths$fp_pregwant); prop.table(table(livebirths$fp_pregwant))*100
+
+## Distance from home to clinic
+table(livebirths$distance1h); prop.table(table(livebirths$distance1h))*100
+
+# depression score
+table(livebirths$dp13); prop.table(table(livebirths$dp13)*100)
+
+
+# IPV 
+table(livebirths$ip_abuselastyr); prop.table(table(livebirths$ip_abuselastyr))*100
+
+## Marital status - currently Married/cohabiting
+table(livebirths$marry); prop.table(table(livebirths$marry))*100
+
+############################################################################
+###########   variables among those with previous pregnancy #################
+## Obstetrical history - last delivered in health facility
+#overall
+table(livebirths$group11en_lastdelivloc); prop.table(table(livebirths$group11en_lastdelivloc))
+
+## History of pregnancy/child loss
+#overall
+table(livebirths$losshistory); prop.table(table(livebirths$losshistory))*100
+
+table(livebirths$losshistory); prop.table(table(livebirths$losshistory))*100
+
+## Delivery complications in last delivery
+# overall
+table(livebirths$delcomplication); prop.table(table(livebirths$delcomplication))*100
+
+#############################################################################
+
+# Calculate gestational age at birth for perinatal livebirths
+summary(livebirths$gestage_birth)
+
+######### Preterm birth vs. not
+table(livebirths$preterm);prop.table(table(livebirths$preterm))
+
+# Multiple birth
+table(livebirths$group3multibirth);
+prop.table(table(livebirths$group3multibirth))
+
+
+# Get the number of participants who sent at least one message
+
+messages <- read.csv(paste0(data.dir.mwn,"/messages_export_2019-03-05.csv"))
+head(messages)
+
+messages %>% 
+  arrange(pid) %>%
+  filter(sent_by=="participant") %>%
+  summarize(num_pid = n_distinct(pid))
+
+
+# Median antenatal period exposure time
+
+# today.y is enrollment date
+head(completedata_screen$del_date)
+head(completedata_screen$today.y)
+
+completedata_screen$num_weeks = as.numeric(as.Date(completedata_screen$del_date) - as.Date(completedata_screen$today.y))/7
+
+summary(completedata_screen$num_weeks)
+
+
+# Number of study participants with an end of study visit
+
+length(unique(followup$ptidno))
+
+# number with phone or in person interview
+table(followup$phone_exit)
+
+
+# Get CIs for neonatal mortality rate and stillbirth rate
+
+library(DescTools)
+BinomCI(22, 1000, conf.level = 0.95, sides = c("two.sided"))
+
+BinomCI(16, 1000, conf.level = 0.95, sides = c("two.sided"))
+
+```
+
+**REGRESSION ANALYSIS**
+
+## Create variables for log regressions
+```{r}
+
+regressiondata <- read.csv("NEO mortality dataset.csv")
+
+############
+## Primigravida (first pregnancy)
+regressiondata <- regressiondata %>% mutate(primigravida=ifelse(group8en_pregnum==1, 1, 0))
+
+## use SMS as primary mode of communication 
+regressiondata <- regressiondata %>% mutate(primarysms=ifelse(group14te_phonemode1=="SMS messaging", 1, 0))
+
+## education >=8 years
+regressiondata <- regressiondata %>% mutate(educ8=ifelse(group5en_educyrs==-2, NA, ifelse(group5en_educyrs>=8, 1, 0)))
+
+## household income
+regressiondata$monthincome <- ifelse(regressiondata$group7en_monthincome==-2, NA, regressiondata$group7en_monthincome)
+
+## Distance from home to clinic
+regressiondata$distance <- ifelse(regressiondata$group7en_scale_clinictravel=="Minutes (if <1 hour)", regressiondata$group7en_clinictravelm,
+                                  regressiondata$group7en_clinictravelm*60)
+regressiondata$distance1h <- ifelse(regressiondata$distance>=60, 1, 0)
+
+#make own phone variable, where ownphone=1/0
+regressiondata$ownphone <- ifelse(regressiondata$te_sharestudyphone=="No", 1, 0)
+table(regressiondata$ownphone, regressiondata$te_sharestudyphone)
+
+# IPV 
+regressiondata <- regressiondata %>% mutate(ipv_lastyear = ifelse(ip_abuselastyr=="Yes" | group23ip_abuserecent == "Yes" | group24ip_sexabuse == "Yes", 1, 0))
+table(regressiondata$ipv_lastyear)
+
+## Marital status - currently Married/cohabiting
+regressiondata <- regressiondata %>% mutate(marry=ifelse(group5en_marital=="Come we stay" | group5en_marital=="Currently married", 1, ifelse(group5en_marital==-2, NA, 0)))
+
+# Calculate gestational age at birth 
+regressiondata$add_days <- as.numeric(difftime(regressiondata$group1_drdr_deldate,regressiondata$today.y, units="days"))
+
+regressiondata$gestage_birth <- (regressiondata$add_days/7) + regressiondata$group1sc_gestage
+
+# Preterm birth
+regressiondata$preterm <- ifelse(regressiondata$gestage_birth > 0 & regressiondata$gestage_birth < 37,1,ifelse(regressiondata$gestage_birth >=37 & regressiondata$gestage_birth < 60,0,NA))
+
+## Obstetrical history - last delivered in health facility
+regressiondata$deliveryhf <- ifelse(regressiondata$group11en_lastdelivloc==1,2,1)
+regressiondata$deliveryhf <- ifelse(is.na(regressiondata$group11en_lastdelivloc),0,regressiondata$deliveryhf)
+
+## History of pregnancy/child loss
+regressiondata <- regressiondata %>% mutate(losshistory=ifelse(group10en_childrenlive+1 < group8en_pregnum, 1, 0))
+
+regressiondata <- regressiondata %>% mutate(losshistory1=ifelse(group10en_childrenlive+1 < group8en_pregnum, 2, 1))
+regressiondata$losshistory1 <- ifelse(is.na(regressiondata$group10en_childrenlive),0,regressiondata$losshistory1)
+
+## Delivery complications in last delivery
+regressiondata <- regressiondata %>% mutate(delcomplication = ifelse(en_lastpregcomp1!="None", 1, 0))
+
+regressiondata <- regressiondata %>% mutate(delcomplication1 = ifelse(en_lastpregcomp1!="None", 2, 1))
+regressiondata$delcomplication1 <- ifelse(is.na(regressiondata$en_lastpregcomp1),0,regressiondata$delcomplication1)
+
+# need to take out the one mother who had a death, since we don't have an infant outcome on her children
+regressiondata %>% filter(SAE.Type == "Death" & Subject.of.SAE == "Mother") # ptidno: 42110179 
+
+regressiondata <- subset(regressiondata, ptidno!=42110179)
+
+regressiondata <- regressiondata %>% mutate(dp13=ifelse(group20dp_blame_num + 
+                                                    group20dp_cry_num + 
+                                                    group20dp_humor_num + 
+                                                    group20dp_lookfwd_num + 
+                                                    group20dp_worry_num + 
+                                                    group20dp_panic_num + 
+                                                    group20dp_sleep_num + 
+                                                    group20dp_sad_num + 
+                                                    group20dp_selfharm_num +
+                                                    group20dp_overwhelm_num >= 13, 1, 0))
+
+table(regressiondata$dp13); prop.table(table(regressiondata$dp13)*100)
+
+
+write.csv(regressiondata, paste0(data.dir.mwn,"/regressiondata.csv"))
+```
+
+## unadjusted RR by site
+```{r comparing_sitelogreg}
+regressiondata$urban <- ifelse(regressiondata$group3en_scrid_site=="Mathare", 1, 0)
+table(regressiondata$urban, useNA = "ifany")
+
+site_reg_univ <- glm(urban ~ en_age, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(site_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+site_reg_univ <- glm(urban ~ primigravida, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(site_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+site_reg_univ <- glm(urban ~ ownphone, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(site_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+site_reg_univ <- glm(urban ~ primarysms, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(site_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+site_reg_univ <- glm(urban ~ educ8, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(site_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+site_reg_univ <- glm(urban ~ monthincome, data=regressiondata)
+  rob <- coeftest(site_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+site_reg_univ <- glm(urban ~ factor(fp_pregwant), data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(site_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[3,1]), 2));(lower <- round(exp(rob[3,1]+qnorm(0.025)*rob[3,2]), 2)); (upper <- round(exp(rob[3,1]+qnorm(0.975)*rob[3,2]), 2));(p <- round(rob[3,4], 2))
+
+site_reg_univ <- glm(urban ~ distance1h, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(site_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+site_reg_univ <- glm(urban ~ dp10, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(site_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+site_reg_univ <- glm(urban ~ ip_abuselastyr, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(site_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+site_reg_univ <- glm(urban ~ group1sc_gestage, data=regressiondata)
+  rob <- coeftest(site_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+site_reg_univ <- glm(urban ~ gestage_birth, data=regressiondata)
+  rob <- coeftest(site_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+site_reg_univ <- glm(urban ~ preterm, data=regressiondata)
+  rob <- coeftest(site_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+site_reg_univ <- glm(urban ~ marry, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(site_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+site_reg_univ <- glm(urban ~ group3multibirth, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(site_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+site_reg_univ <- glm(urban ~ group11en_lastdelivloc, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(site_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+site_reg_univ <- glm(urban ~ losshistory, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(site_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+site_reg_univ <- glm(urban ~ delcomplication, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(site_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+site_reg_univ <- glm(urban ~ factor(delcomplication1), data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(site_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+```
+
+## Linear log regression for perinatal death
+```{r perideathlogreg}
+############
+## take out 42460530, 42110097, 42110318, 42460687 because they died > 6 days after delivery (in line with WHO definition for perinatal death)
+regressiondata$perideath <- ifelse(regressiondata$Subject.of.SAE=="Infant" & ((regressiondata$SAE.Type == "Death" & (regressiondata$ptidno!= 42110318|regressiondata$ptidno!=42460687|regressiondata$ptidno!=42110097|regressiondata$ptidno!=42460530)) |regressiondata$SAE.Type == "Stillbirth" |regressiondata$SAE.Type =="IUFD"),1,0)
+
+regressiondata$perideath[is.na(regressiondata$perideath)] <- 0
+
+regressiondata$perideath[regressiondata$ptidno==42110318| regressiondata$ptidno==42460687|regressiondata$ptidno==42110097|regressiondata$ptidno==42460530] <- 0
+
+table(regressiondata$perideath, useNA = "ifany")
+
+#check that all 28 perideaths are recoded
+sum(regressiondata$perideath)
+
+#get the frequencies by site
+table(regressiondata$perideath[regressiondata$group3en_scrid_site=="Mathare"]); prop.table(table(regressiondata$perideath[regressiondata$group3en_scrid_site=="Mathare"]))*100
+
+table(regressiondata$perideath[regressiondata$group3en_scrid_site=="Rachuonyo"]); prop.table(table(regressiondata$perideath[regressiondata$group3en_scrid_site=="Rachuonyo"]))*100
+
+regressiondata %>% filter((Subject.of.SAE=="Infant" & SAE.Type == "Death")|regressiondata$SAE.Type == "Stillbirth" |regressiondata$SAE.Type =="IUFD") %>% select(ptidno, perideath, SAE.Type, Subject.of.SAE)
+```
+
+## Unadjusted log linear regressions for perinatal death
+```{r}
+#univariate analyses
+
+## site
+perideath_reg_univ <- glm(perideath ~ group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+perideath_reg_univ <- glm(perideath ~ en_age, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+perideath_reg_univ <- glm(perideath ~ primigravida, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+perideath_reg_univ <- glm(perideath ~ ownphone, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+perideath_reg_univ <- glm(perideath ~ primarysms, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+perideath_reg_univ <- glm(perideath ~ educ8, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+perideath_reg_univ <- glm(perideath ~ monthincome, data=regressiondata)
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+perideath_reg_univ <- glm(perideath ~ factor(fp_pregwant), data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[3,1]), 2));(lower <- round(exp(rob[3,1]+qnorm(0.025)*rob[3,2]), 2)); (upper <- round(exp(rob[3,1]+qnorm(0.975)*rob[3,2]), 2));(p <- round(rob[3,4], 2))
+
+perideath_reg_univ <- glm(perideath ~ distance1h, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+perideath_reg_univ <- glm(perideath ~ dp10, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+perideath_reg_univ <- glm(perideath ~ ip_abuselastyr, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+perideath_reg_univ <- glm(perideath ~ group1sc_gestage, data=regressiondata)
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+perideath_reg_univ <- glm(perideath ~ gestage_birth, data=regressiondata)
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+perideath_reg_univ <- glm(perideath ~ preterm, data=regressiondata)
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+perideath_reg_univ <- glm(perideath ~ marry, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+perideath_reg_univ <- glm(perideath ~ group3multibirth, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+perideath_reg_univ <- glm(perideath ~ group11en_lastdelivloc, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+perideath_reg_univ <- glm(perideath ~ losshistory, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+perideath_reg_univ <- glm(perideath ~ delcomplication, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+perideath_reg_univ <- glm(perideath ~ factor(delcomplication1), data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+```
+
+## Adjusted log linear regressions for perinatal death
+```{r}
+## site
+#perideath_reg_univ <- glm(perideath ~ group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+ # rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  #(PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+## Maternal age
+perideath_reg_univ <- glm(perideath ~ en_age + factor(group3en_scrid_site), data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+## Primiparity
+perideath_reg_univ <- glm(perideath ~ primigravida + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+perideath_reg_univ <- glm(perideath ~ ownphone + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+perideath_reg_univ <- glm(perideath ~ primarysms + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+perideath_reg_univ <- glm(perideath ~ educ8 + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+perideath_reg_univ <- glm(perideath ~ monthincome + group3en_scrid_site, data=regressiondata)
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+perideath_reg_univ <- glm(perideath ~ factor(fp_pregwant) + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[3,1]), 2));(lower <- round(exp(rob[3,1]+qnorm(0.025)*rob[3,2]), 2)); (upper <- round(exp(rob[3,1]+qnorm(0.975)*rob[3,2]), 2));(p <- round(rob[3,4], 2))
+
+perideath_reg_univ <- glm(perideath ~ distance1h + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+perideath_reg_univ <- glm(perideath ~ dp10 + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+perideath_reg_univ <- glm(perideath ~ ip_abuselastyr + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+perideath_reg_univ <- glm(perideath ~ group1sc_gestage  + group3en_scrid_site, data=regressiondata)
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+perideath_reg_univ <- glm(perideath ~ gestage_birth  + group3en_scrid_site, data=regressiondata)
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+perideath_reg_univ <- glm(perideath ~ preterm  + group3en_scrid_site, data=regressiondata)
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+perideath_reg_univ <- glm(perideath ~ marry + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+perideath_reg_univ <- glm(perideath ~ group3multibirth + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+perideath_reg_univ <- glm(perideath ~ group11en_lastdelivloc + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+#perideath_reg_univ <- glm(perideath ~ factor(deliveryhf) + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+ # rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+ # (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+#  (PR <- round(exp(rob[3,1]), 2));(lower <- round(exp(rob[3,1]+qnorm(0.025)*rob[3,2]), 2)); (upper <- round(exp(rob[3,1]+qnorm(0.975)*rob[3,2]), 2));(p <- round(rob[3,4], 2))
+
+perideath_reg_univ <- glm(perideath ~ losshistory + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+#perideath_reg_univ <- glm(perideath ~ factor(losshistory1) + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+ # rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  #rob
+  #(PR <- round(exp(rob[2,1]), 2));(lower <-   round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+ # (PR <- round(exp(rob[3,1]), 2));(lower <- round(exp(rob[3,1]+qnorm(0.025)*rob[3,2]), 2)); (upper <- round(exp(rob[3,1]+qnorm(0.975)*rob[3,2]), 2));(p <- round(rob[3,4], 2))
+
+perideath_reg_univ <- glm(perideath ~ delcomplication + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+#perideath_reg_univ <- glm(perideath ~ factor(delcomplication1) + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+ # rob <- coeftest(perideath_reg_univ, vcov. = vcovHAC);
+  #(PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+```
+
+
+## Log linear regression for hospitalizations
+```{r}
+# need to add the case of Death3 (died during hospitalization which is recorded as a Death on SAE form) to n=14 hospitalization cases (ptid 42460687)
+
+regressiondata$hosp <- ifelse(regressiondata$Subject.of.SAE=="Infant" & regressiondata$SAE.Type == "Hospitalization"| regressiondata$ptidno==42460687,1,0)
+
+regressiondata$hosp[is.na(regressiondata$hosp)] <- 0
+
+# This is to take out IUFD, stillbirth, and all infant deaths from denominator
+regressiondata$hosp[regressiondata$SAE.Type=="IUFD"] <- NA
+regressiondata$hosp[regressiondata$SAE.Type=="Stillbirth"] <- NA
+regressiondata$hosp[regressiondata$SAE.Type=="Death" & regressiondata$ptidno!=42460687] <- NA
+
+regressiondata %>% 
+  filter(SAE.Type=="Death") %>% 
+  select(Subject.of.SAE, ptidno, Age.at.death) %>% 
+  head(20)
+
+# these two patient IDs were maternal hospitalizations, so can recode as 0 for infant hospitalization outcome
+regressiondata$hosp[regressiondata$ptidno==42110052] <- 0
+regressiondata$hosp[regressiondata$ptidno==42110078] <- 0
+sum(regressiondata$hosp, na.rm = T) # n=15 hospitalizations
+table(regressiondata$hosp)
+
+
+summary(regressiondata$hosp)
+#univariate analyses
+
+hosp_reg_univ  <- glm(hosp ~ group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(hosp_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+hosp_reg_univ  <- glm(hosp ~ en_age, data=regressiondata)
+
+  rob <- coeftest(hosp_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+hosp_reg_univ  <- glm(hosp ~ primigravida, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(hosp_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+hosp_reg_univ  <- glm(hosp ~ ownphone, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(hosp_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+hosp_reg_univ  <- glm(hosp ~ primarysms, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(hosp_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+hosp_reg_univ  <- glm(hosp ~ educ8, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(hosp_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+hosp_reg_univ  <- glm(hosp ~ monthincome, data=regressiondata)
+
+  rob <- coeftest(hosp_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+hosp_reg_univ  <- glm(hosp ~ factor(fp_pregwant), data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(hosp_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[3,1]), 2));(lower <- round(exp(rob[3,1]+qnorm(0.025)*rob[3,2]), 2)); (upper <- round(exp(rob[3,1]+qnorm(0.975)*rob[3,2]), 2));(p <- round(rob[3,4], 2))
+
+hosp_reg_univ  <- glm(hosp ~ distance1h, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(hosp_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+hosp_reg_univ  <- glm(hosp ~ dp10, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(hosp_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+hosp_reg_univ  <- glm(hosp ~ ip_abuselastyr, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(hosp_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+hosp_reg_univ  <- glm(hosp ~ group1sc_gestage, data=regressiondata)
+
+  rob <- coeftest(hosp_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+hosp_reg_univ  <- glm(hosp ~ gestage_birth, data=regressiondata)
+
+  rob <- coeftest(hosp_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+hosp_reg_univ  <- glm(hosp ~ preterm, data=regressiondata)
+
+  rob <- coeftest(hosp_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+hosp_reg_univ  <- glm(hosp ~ marry, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(hosp_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+hosp_reg_univ  <- glm(hosp ~ group3multibirth, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(hosp_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+hosp_reg_univ  <- glm(hosp ~ group11en_lastdelivloc, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(hosp_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+hosp_reg_univ  <- glm(hosp ~ losshistory, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(hosp_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+hosp_reg_univ  <- glm(hosp ~ delcomplication, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(hosp_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+```
+
+## Adjusted log linear regressions for hospitalizations
+```{r}
+
+## Maternal age
+hosp_reg_univ <- glm(hosp ~ en_age + factor(group3en_scrid_site), data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(hosp_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+## Primiparity
+hosp_reg_univ <- glm(hosp ~ primigravida + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(hosp_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+hosp_reg_univ <- glm(hosp ~ ownphone + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(hosp_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+hosp_reg_univ <- glm(hosp ~ primarysms + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(hosp_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+hosp_reg_univ <- glm(hosp ~ educ8 + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(hosp_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+hosp_reg_univ <- glm(hosp ~ monthincome + group3en_scrid_site, data=regressiondata)
+  rob <- coeftest(hosp_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+
+hosp_reg_univ <- glm(hosp ~ factor(fp_pregwant) + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(hosp_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[3,1]), 2));(lower <- round(exp(rob[3,1]+qnorm(0.025)*rob[3,2]), 2)); (upper <- round(exp(rob[3,1]+qnorm(0.975)*rob[3,2]), 2));(p <- round(rob[3,4], 2))
+
+hosp_reg_univ <- glm(hosp ~ distance1h + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(hosp_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+hosp_reg_univ <- glm(hosp ~ dp10 + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(hosp_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+hosp_reg_univ <- glm(hosp ~ ip_abuselastyr + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(hosp_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+hosp_reg_univ <- glm(hosp ~ group1sc_gestage  + group3en_scrid_site, data=regressiondata)
+  rob <- coeftest(hosp_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+hosp_reg_univ <- glm(hosp ~ gestage_birth + group3en_scrid_site, data=regressiondata)
+  rob <- coeftest(hosp_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+hosp_reg_univ  <- glm(hosp ~ preterm + group3en_scrid_site, data=regressiondata)
+
+  rob <- coeftest(hosp_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+  
+hosp_reg_univ <- glm(hosp ~ marry + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(hosp_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+hosp_reg_univ <- glm(hosp ~ group3multibirth + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(hosp_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+hosp_reg_univ <- glm(hosp ~ group11en_lastdelivloc + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(hosp_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+hosp_reg_univ <- glm(hosp ~ losshistory + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(hosp_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+hosp_reg_univ <- glm(hosp ~ delcomplication + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(hosp_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+
+```
+
+## Logistic regression for neonatal deaths
+
+```{r}
+
+# take out 42110318, 42460687 because they died > 28 days after delivery
+
+regressiondata$neodeath <- ifelse(regressiondata$Subject.of.SAE=="Infant" & regressiondata$SAE.Type == "Death",1,0)
+
+regressiondata$neodeath[is.na(regressiondata$neodeath)] <- 0
+
+regressiondata$neodeath[regressiondata$ptidno==42110318| regressiondata$ptidno==42460687] <- NA
+regressiondata$neodeath[regressiondata$SAE.Type=="IUFD"] <- NA
+regressiondata$neodeath[regressiondata$SAE.Type=="Stillbirth"] <- NA
+
+table(regressiondata$neodeath, useNA = "ifany")
+
+
+#get the frequencies by site
+table(regressiondata$neodeath[regressiondata$group3en_scrid_site=="Mathare"]); prop.table(table(regressiondata$neodeath[regressiondata$group3en_scrid_site=="Mathare"]))*100
+
+table(regressiondata$neodeath[regressiondata$group3en_scrid_site=="Rachuonyo"]); prop.table(table(regressiondata$neodeath[regressiondata$group3en_scrid_site=="Rachuonyo"]))*100
+
+
+table(regressiondata$neodeath, regressiondata$SAE.Type, useNA = "ifany")
+
+#univariate analyses
+
+neodeath_reg_univ <- glm(neodeath ~ group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+neodeath_reg_univ <- glm(neodeath ~ en_age, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+neodeath_reg_univ <- glm(neodeath ~ primigravida, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+neodeath_reg_univ <- glm(neodeath ~ ownphone, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+neodeath_reg_univ <- glm(neodeath ~ primarysms, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+neodeath_reg_univ <- glm(neodeath ~ educ8, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+neodeath_reg_univ <- glm(neodeath ~ monthincome, data=regressiondata)
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+neodeath_reg_univ <- glm(neodeath ~ factor(fp_pregwant), data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[3,1]), 2));(lower <- round(exp(rob[3,1]+qnorm(0.025)*rob[3,2]), 2)); (upper <- round(exp(rob[3,1]+qnorm(0.975)*rob[3,2]), 2));(p <- round(rob[3,4], 2))
+
+neodeath_reg_univ <- glm(neodeath ~ distance1h, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+neodeath_reg_univ <- glm(neodeath ~ dp10, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+neodeath_reg_univ <- glm(neodeath ~ ip_abuselastyr, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+neodeath_reg_univ <- glm(neodeath ~ group1sc_gestage, data=regressiondata)
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+neodeath_reg_univ <- glm(neodeath ~ marry, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+neodeath_reg_univ <- glm(neodeath ~ gestage_birth, data=regressiondata)
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+neodeath_reg_univ <- glm(neodeath ~ preterm, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+neodeath_reg_univ <- glm(neodeath ~ group3multibirth, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+neodeath_reg_univ <- glm(neodeath ~ group11en_lastdelivloc, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+neodeath_reg_univ <- glm(neodeath ~ losshistory, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+neodeath_reg_univ <- glm(neodeath ~ delcomplication, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+```
+
+## Adjusted log linear regressions for neonatal death
+```{r}
+
+## Maternal age
+neodeath_reg_univ <- glm(neodeath ~ en_age + factor(group3en_scrid_site), data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+## Primiparity
+neodeath_reg_univ <- glm(neodeath ~ primigravida + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+neodeath_reg_univ <- glm(neodeath ~ ownphone + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+neodeath_reg_univ <- glm(neodeath ~ primarysms + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+neodeath_reg_univ <- glm(neodeath ~ educ8 + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+neodeath_reg_univ <- glm(neodeath ~ monthincome + group3en_scrid_site, data=regressiondata)
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+
+neodeath_reg_univ <- glm(neodeath ~ factor(fp_pregwant) + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[3,1]), 2));(lower <- round(exp(rob[3,1]+qnorm(0.025)*rob[3,2]), 2)); (upper <- round(exp(rob[3,1]+qnorm(0.975)*rob[3,2]), 2));(p <- round(rob[3,4], 2))
+
+neodeath_reg_univ <- glm(neodeath ~ distance1h + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+neodeath_reg_univ <- glm(neodeath ~ dp13 + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+neodeath_reg_univ <- glm(neodeath ~ ip_abuselastyr + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+neodeath_reg_univ <- glm(neodeath ~ group1sc_gestage  + group3en_scrid_site, data=regressiondata)
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+neodeath_reg_univ <- glm(neodeath ~ marry + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+neodeath_reg_univ <- glm(neodeath ~ gestage_birth + group3en_scrid_site, data=regressiondata)
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+neodeath_reg_univ <- glm(neodeath ~ preterm + group3en_scrid_site, data=regressiondata)
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+neodeath_reg_univ <- glm(neodeath ~ group3multibirth + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+neodeath_reg_univ <- glm(neodeath ~ group11en_lastdelivloc + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+neodeath_reg_univ <- glm(neodeath ~ losshistory + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+neodeath_reg_univ <- glm(neodeath ~ delcomplication + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+
+```
+
+
+# Loglinear regression for stillbirths/IUFD
+
+```{r}
+regressiondata$stillbirth <- ifelse(regressiondata$Subject.of.SAE=="Infant" & (regressiondata$SAE.Type == "Stillbirth"| regressiondata$SAE.Type == "IUFD"),1,0)
+
+regressiondata$stillbirth[is.na(regressiondata$stillbirth)] <- 0
+table(regressiondata$stillbirth)
+
+##############  univariate analyses ####################
+
+stillbirth_reg_univ  <- glm(stillbirth ~ group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(stillbirth_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+stillbirth_reg_univ  <- glm(stillbirth ~ en_age, data=regressiondata)
+  rob <- coeftest(stillbirth_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+stillbirth_reg_univ  <- glm(stillbirth ~ primigravida, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(stillbirth_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+stillbirth_reg_univ  <- glm(stillbirth ~ ownphone, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(stillbirth_reg_univ , vcov. = vcovHAC);
+    (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+stillbirth_reg_univ  <- glm(stillbirth ~ primarysms, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(stillbirth_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+stillbirth_reg_univ  <- glm(stillbirth ~ educ8, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(stillbirth_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+stillbirth_reg_univ  <- glm(stillbirth ~ monthincome, data=regressiondata)
+
+  rob <- coeftest(stillbirth_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+stillbirth_reg_univ  <- glm(stillbirth ~ factor(fp_pregwant), data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(stillbirth_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[3,1]), 2));(lower <- round(exp(rob[3,1]+qnorm(0.025)*rob[3,2]), 2)); (upper <- round(exp(rob[3,1]+qnorm(0.975)*rob[3,2]), 2));(p <- round(rob[3,4], 2))
+
+stillbirth_reg_univ  <- glm(stillbirth ~ distance1h, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(stillbirth_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+stillbirth_reg_univ  <- glm(stillbirth ~ dp10, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(stillbirth_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+stillbirth_reg_univ  <- glm(stillbirth ~ ip_abuselastyr, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(stillbirth_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+stillbirth_reg_univ  <- glm(stillbirth ~ group1sc_gestage, data=regressiondata)
+
+  rob <- coeftest(stillbirth_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+stillbirth_reg_univ  <- glm(stillbirth ~ gestage_birth, data=regressiondata)
+
+  rob <- coeftest(stillbirth_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+stillbirth_reg_univ  <- glm(stillbirth ~ preterm, data=regressiondata)
+
+  rob <- coeftest(stillbirth_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+stillbirth_reg_univ  <- glm(stillbirth ~ marry, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(stillbirth_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+stillbirth_reg_univ  <- glm(stillbirth ~ group3multibirth, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(stillbirth_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+stillbirth_reg_univ  <- glm(stillbirth ~ group11en_lastdelivloc, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(stillbirth_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+stillbirth_reg_univ  <- glm(stillbirth ~ losshistory, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(stillbirth_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+stillbirth_reg_univ  <- glm(stillbirth ~ delcomplication, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(stillbirth_reg_univ , vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+```
+
+## Adjusted log linear regressions for IUFD/stillbirths
+```{r}
+## Maternal age
+stillbirth_reg_univ <- glm(stillbirth ~ en_age + factor(group3en_scrid_site), data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(stillbirth_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+## Primiparity
+stillbirth_reg_univ <- glm(stillbirth ~ primigravida + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(stillbirth_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+stillbirth_reg_univ <- glm(stillbirth ~ ownphone + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(stillbirth_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+stillbirth_reg_univ <- glm(stillbirth ~ primarysms + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(stillbirth_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+stillbirth_reg_univ <- glm(stillbirth ~ educ8 + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(stillbirth_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+stillbirth_reg_univ <- glm(stillbirth ~ monthincome + group3en_scrid_site, data=regressiondata)
+  rob <- coeftest(stillbirth_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+
+stillbirth_reg_univ <- glm(stillbirth ~ factor(fp_pregwant) + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+
+  rob <- coeftest(stillbirth_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[3,1]), 2));(lower <- round(exp(rob[3,1]+qnorm(0.025)*rob[3,2]), 2)); (upper <- round(exp(rob[3,1]+qnorm(0.975)*rob[3,2]), 2));(p <- round(rob[3,4], 2))
+
+stillbirth_reg_univ <- glm(stillbirth ~ distance1h + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(stillbirth_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+stillbirth_reg_univ <- glm(stillbirth ~ dp13 + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(stillbirth_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+stillbirth_reg_univ <- glm(stillbirth ~ ip_abuselastyr + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(stillbirth_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+stillbirth_reg_univ <- glm(stillbirth ~ group1sc_gestage  + group3en_scrid_site, data=regressiondata)
+  rob <- coeftest(stillbirth_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+stillbirth_reg_univ <- glm(stillbirth ~ gestage_birth  + group3en_scrid_site, data=regressiondata)
+  rob <- coeftest(stillbirth_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+stillbirth_reg_univ <- glm(stillbirth ~ preterm  + group3en_scrid_site, data=regressiondata)
+  rob <- coeftest(stillbirth_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+stillbirth_reg_univ <- glm(stillbirth ~ marry + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(stillbirth_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+stillbirth_reg_univ <- glm(stillbirth ~ group3multibirth + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(stillbirth_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+stillbirth_reg_univ <- glm(stillbirth ~ group11en_lastdelivloc + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(stillbirth_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+stillbirth_reg_univ <- glm(stillbirth ~ losshistory + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(stillbirth_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+
+stillbirth_reg_univ <- glm(stillbirth ~ delcomplication + group3en_scrid_site, data=regressiondata, family=binomial(link="log"))
+  rob <- coeftest(stillbirth_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+
+
+```
+
+**SMS BEHAVIOR**
+
+
+Perinatal deaths
+```{r perideaths}
+completedata_screen %>% filter(perideaths==1) %>% 
+  dplyr::select(sm_smsreceivepreg, sm_smsreceivewk1pp, sm_smsreceiveafterwk1pp, sm_smsreponse, sm_smsdiscuss, sm_consult, fp_currentpreg) %>% 
+  count()
+
+completedata_screen %>% filter(perideaths==1) %>% 
+  dplyr::select(sm_smsreceivepreg, sm_smsreceivewk1pp, sm_smsreceiveafterwk1pp, sm_smsreponse, sm_smsdiscuss, sm_consult, fp_currentpreg) %>% 
+  count()
+
+## For perideaths, 7 did not do follow up visit out of 30, so we have SMS behavior on 23 of these mothers
+completedata_screen %>% filter(perideaths==1) %>% 
+  dplyr::select(ptidno, SAE.Type, sm_smsreceivepreg, sm_smsreceivewk1pp, sm_smsreceiveafterwk1pp, sm_smsreponse, sm_smsdiscuss, sm_consult, fp_currentpreg) %>% 
+  group_by(sm_consult) %>% 
+dplyr::summarize(n())
+
+# 11/23 consulted our project nurse via SMS at any time
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(sm_consult) %>% 
+dplyr::summarize(n())
+
+# what did the 11 who consulted a nurse consult about?
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(sm_consultwhat1) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(sm_consultwhat2) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(sm_consultwhat4) %>% 
+dplyr::summarize(n())
+
+# Why was the consult helpful?
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(consulthelpfulwhy1) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(consulthelpfulwhy2) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(consulthelpfulwhy3) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(consulthelpfulwhy4) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(consulthelpfulwhy5) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(consulthelpfulwhy6) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(consulthelpfulwhy7) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(consulthelpfulwhy_sp) %>% 
+dplyr::summarize(n())
+
+# Why was the consult not helpful?
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(consultnothelpfulwhy1) %>% 
+dplyr::summarize(n())
+
+# Did you find these consults helpful?
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(consulthelp) %>% 
+dplyr::summarize(n())
+
+# If you did not consult with the nurse why didn’t you?  
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(consultnotwhy1) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(consultnotwhy2) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(recommendstudy) %>% 
+dplyr::summarize(n())
+
+# did you consult wiht a project nurse about health issues?
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(fp_consult) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(fp_consulthelp) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(fp_nurseadvice) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(dr_consult) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(dr_consulthelp) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(dr_nurseadvice) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(mh_hospitalised) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(mh_admitted) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(mh_consult) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(mh_consulthelp) %>% 
+dplyr::summarize(n())
+
+
+
+#### have you had any illnesses but not been seen at the health center?
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(mh_signs1) %>% 
+dplyr::summarize(n())
+
+# did you consult a nurse about the illness?
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(mh_1consult) %>% 
+dplyr::summarize(n())
+
+# was the consult with the nurse helpful?
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(mh_1nurseadvice) %>% 
+dplyr::summarize(n())
+
+
+#### Did your child have any illnesses and were admitted to the hospital?
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(inf2_hospitalised) %>% 
+dplyr::summarize(n())
+
+# did you consult a nurse about child's illness?
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(inf2_consult) %>% 
+dplyr::summarize(n())
+
+######################### SAE questions #######################
+# did you consult with nurse via SMS about your child's illness/pregnancy at anytime (if perinatal death occurred)?
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae_consult) %>% 
+dplyr::summarize(n())
+
+# did you take action based on nurse's advice
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae_nurseadvice) %>% 
+dplyr::summarize(n())
+
+# specify what actions were taken
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae_nurseadvice_sp) %>% 
+dplyr::summarize(n())
+
+# did you find this consult helpful?
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae_consulthelpfulwhy1) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae_consulthelpfulwhy2) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae_consulthelpfulwhy3) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae_consulthelpfulwhy4) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae_consulthelpfulwhy5) %>% 
+dplyr::summarize(n())
+
+# if consult was not helpfuly, why not?
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae_consultnothelpfulwhy1) %>% 
+dplyr::summarize(n())
+
+# if did not consult with nurse, why didn't you?
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae_consultnotwhy1) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae_consultnotwhy2) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae_consultnotwhy3) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae_consultnotwhy4) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae_consultnotwhy6) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae_consultnotwhy_sp) %>% 
+dplyr::summarize(n())
+
+###### questions for second twin ##############
+# did you consult with nurse via SMS about your second child's illness/pregnancy at anytime (if perinatal death occurred)?
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae2_consult) %>% 
+dplyr::summarize(n())
+
+# did you take action based on nurse's advice
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae2_nurseadvice) %>% 
+dplyr::summarize(n())
+
+# specify what actions were taken
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae2_nurseadvice_sp) %>% 
+dplyr::summarize(n())
+
+# did you find this consult helpful?
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae2_consulthelpfulwhy1) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae2_consulthelpfulwhy2) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae2_consulthelpfulwhy3) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae2_consulthelpfulwhy4) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae2_consulthelpfulwhy5) %>% 
+dplyr::summarize(n())
+
+# if consult was not helpfuly, why not?
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae2_consultnothelpfulwhy1) %>% 
+dplyr::summarize(n())
+
+# if did not consult with nurse, why didn't you?
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae2_consultnotwhy1) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae2_consultnotwhy2) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae2_consultnotwhy3) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae2_consultnotwhy4) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==1) %>% 
+    group_by(isae2_consultnotwhy5) %>% 
+dplyr::summarize(n())
+
+```
+
+Neonatal deaths
+
+```{r neodeaths}
+
+# Had a follow up visit
+completedata_screen %>% filter(neodeath==1) %>% 
+  dplyr::select(ptidno, SAE.Type, sm_smsreceivepreg, sm_smsreceivewk1pp, sm_smsreceiveafterwk1pp, sm_smsreponse, sm_smsdiscuss, sm_consult, fp_currentpreg) %>% 
+  group_by(sm_consult) %>% 
+dplyr::summarize(n())
+
+# consulted our project nurse via SMS at any time
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(sm_consult) %>% 
+dplyr::summarize(n())
+
+# what did those who consulted a nurse consult about?
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(sm_consultwhat1) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(sm_consultwhat2) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(sm_consultwhat4) %>% 
+dplyr::summarize(n())
+
+# Why was the consult helpful?
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(consulthelpfulwhy1) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(consulthelpfulwhy2) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(consulthelpfulwhy3) %>% 
+dplyr::summarize(n())
+
+###
+for (i in 1:6) {
+  completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(paste("consulthelpfulwhy", i)) %>% 
+dplyr::summarize(n())
+}
+###
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(consulthelpfulwhy4) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(consulthelpfulwhy5) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(consulthelpfulwhy6) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(consulthelpfulwhy7) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(consulthelpfulwhy_sp) %>% 
+dplyr::summarize(n())
+
+# Why was the consult not helpful?
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(consultnothelpfulwhy1) %>% 
+dplyr::summarize(n())
+
+# Did you find these consults helpful?
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(consulthelp) %>% 
+dplyr::summarize(n())
+
+# If you did not consult with the nurse why didn’t you?  
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(consultnotwhy1) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(consultnotwhy_sp) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(consultnotwhy2) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(recommendstudy) %>% 
+dplyr::summarize(n())
+
+# did you consult with a project nurse about health issues?
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(fp_consult) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(fp_consulthelp) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(fp_nurseadvice) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(dr_consult) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(dr_consulthelp) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(dr_nurseadvice) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(mh_hospitalised) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(mh_admitted) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(mh_consult) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(mh_consulthelp) %>% 
+dplyr::summarize(n())
+
+
+#### have you had any illnesses but not been seen at the health center?
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(mh_signs1) %>% 
+dplyr::summarize(n())
+
+# did you consult a nurse about the illness?
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(mh_1consult) %>% 
+dplyr::summarize(n())
+
+# was the consult with the nurse helpful?
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(mh_1nurseadvice) %>% 
+dplyr::summarize(n())
+
+
+#### Did your child have any illnesses and were admitted to the hospital?
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(inf2_hospitalised) %>% 
+dplyr::summarize(n())
+
+# did you consult a nurse about child's illness?
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(inf2_consult) %>% 
+dplyr::summarize(n())
+```
+
+Neodeaths SAE questions
+```{r neodeath_sae}
+
+######################### SAE questions #######################
+# did you consult with nurse via SMS about your child's illness/pregnancy at anytime (if perinatal death occurred)?
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(isae_consult) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(isae_consulthelp) %>% 
+dplyr::summarize(n())
+
+# did you take action based on nurse's advice
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(isae_nurseadvice) %>% 
+dplyr::summarize(n())
+
+# specify what actions were taken
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(isae_nurseadvice_sp) %>% 
+dplyr::summarize(n())
+
+# did you find this consult helpful?
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(isae_consulthelpfulwhy1) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(isae_consulthelpfulwhy2) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(isae_consulthelpfulwhy3) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(isae_consulthelpfulwhy4) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(isae_consulthelpfulwhy5) %>% 
+dplyr::summarize(n())
+
+# if consult was not helpfuly, why not?
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(isae_consultnothelpfulwhy1) %>% 
+dplyr::summarize(n())
+
+# if did not consult with nurse, why didn't you?
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(isae_consultnotwhy1) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(isae_consultnotwhy2) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(isae_consultnotwhy3) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(isae_consultnotwhy4) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(isae_consultnotwhy6) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(isae_consultnotwhy_sp) %>% 
+dplyr::summarize(n())
+
+###### questions for second twin ##############
+# did you consult with nurse via SMS about your second child's illness/pregnancy at anytime (if perinatal death occurred)?
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(isae2_consult) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(neodeath==1) %>% 
+    group_by(isae2_consult) %>% 
+dplyr::summarize(n())
+```
+Stillbirths
+
+```{r}
+
+# consulted our project nurse via SMS at any time
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(sm_consult) %>% 
+dplyr::summarize(n())
+
+# what did those who consulted a nurse consult about?
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(sm_consultwhat1) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(sm_consultwhat2) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(sm_consultwhat4) %>% 
+dplyr::summarize(n())
+
+# Why was the consult helpful?
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(consulthelpfulwhy1) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(consulthelpfulwhy2) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(consulthelpfulwhy3) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(consulthelpfulwhy4) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(consulthelpfulwhy5) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(consulthelpfulwhy6) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(consulthelpfulwhy7) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(consulthelpfulwhy_sp) %>% 
+dplyr::summarize(n())
+
+# Why was the consult not helpful?
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(consultnothelpfulwhy1) %>% 
+dplyr::summarize(n())
+
+# Did you find these consults helpful?
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(consulthelp) %>% 
+dplyr::summarize(n())
+
+# If you did not consult with the nurse why didn’t you?  
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(consultnotwhy1) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(consultnotwhy2) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(consultnotwhy_sp) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(recommendstudy) %>% 
+dplyr::summarize(n())
+
+# did you consult with a project nurse about health issues?
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(fp_consult) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(fp_consulthelp) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(fp_nurseadvice) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(dr_consult) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(dr_consulthelp) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(dr_nurseadvice) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(mh_hospitalised) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(mh_admitted) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(mh_consult) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(mh_consulthelp) %>% 
+dplyr::summarize(n())
+
+
+#### have you had any illnesses but not been seen at the health center?
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(mh_signs1) %>% 
+dplyr::summarize(n())
+
+# did you consult a nurse about the illness?
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(mh_1consult) %>% 
+dplyr::summarize(n())
+
+# was the consult with the nurse helpful?
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(mh_1nurseadvice) %>% 
+dplyr::summarize(n())
+
+
+#### Did your child have any illnesses and were admitted to the hospital?
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(inf2_hospitalised) %>% 
+dplyr::summarize(n())
+
+# did you consult a nurse about child's illness? (where child was admitted to the hospital for an illness)
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(inf2_consult) %>% 
+dplyr::summarize(n())
+
+```
+
+Stillbirth SAE questions
+```{r neodeath_sae}
+
+######################### SAE questions #######################
+# did you consult with nurse via SMS about your child's illness/pregnancy at anytime (if perinatal death occurred)?
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae_consult) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae_consulthelp) %>% 
+dplyr::summarize(n())
+
+# did you take action based on nurse's advice
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae_nurseadvice) %>% 
+dplyr::summarize(n())
+
+# specify what actions were taken
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae_nurseadvice_sp) %>% 
+dplyr::summarize(n())
+
+# did you find this consult helpful?
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae_consulthelpfulwhy1) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae_consulthelpfulwhy2) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae_consulthelpfulwhy3) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae_consulthelpfulwhy4) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae_consulthelpfulwhy5) %>% 
+dplyr::summarize(n())
+
+# if consult was not helpfuly, why not?
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae_consultnothelpfulwhy1) %>% 
+dplyr::summarize(n())
+
+# if did not consult with nurse, why didn't you?
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae_consultnotwhy1) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae_consultnotwhy2) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae_consultnotwhy3) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae_consultnotwhy4) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae_consultnotwhy6) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae_consultnotwhy_sp) %>% 
+dplyr::summarize(n())
+
+###### questions for second twin ##############
+# did you consult with nurse via SMS about your second child's illness/pregnancy at anytime (if perinatal death occurred)?
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae2_consult) %>% 
+dplyr::summarize(n())
+
+# did you take action based on nurse's advice
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae2_nurseadvice) %>% 
+dplyr::summarize(n())
+
+# specify what actions were taken
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae2_nurseadvice_sp) %>% 
+dplyr::summarize(n())
+
+# did you find this consult helpful?
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae2_consulthelpfulwhy1) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae2_consulthelpfulwhy2) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae2_consulthelpfulwhy3) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae2_consulthelpfulwhy4) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae2_consulthelpfulwhy5) %>% 
+dplyr::summarize(n())
+
+# if consult was not helpfuly, why not?
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae2_consultnothelpfulwhy1) %>% 
+dplyr::summarize(n())
+
+# if did not consult with nurse, why didn't you?
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae2_consultnotwhy1) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae2_consultnotwhy2) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae2_consultnotwhy3) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae2_consultnotwhy4) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(stillbirth==1) %>% 
+    group_by(isae2_consultnotwhy5) %>% 
+dplyr::summarize(n())
+```
+
+Among neonatal death after discharge home (n=6)
+```{r}
+completedata_screen$Age.at.death <- as.numeric(completedata_screen$Age.at.death)
+
+#Had follow-up visit
+completedata_screen %>% filter(Alive.Death.Category=="Death2" & Age.at.death < 29) %>% 
+  dplyr::select(ptidno, SAE.Type, sm_smsreceivepreg, sm_smsreceivewk1pp, sm_smsreceiveafterwk1pp, sm_smsreponse, sm_smsdiscuss, sm_consult, fp_currentpreg) %>% 
+  group_by(sm_consult) %>% 
+  dplyr::summarize(n())
+
+#Consulted nurse via SMS at any time
+completedata_screen %>% filter(Alive.Death.Category=="Death2" & Age.at.death < 29) %>% 
+  group_by(sm_consult) %>% 
+  dplyr::summarize(n())
+
+completedata_screen %>% filter(Alive.Death.Category=="Death2" & Age.at.death < 29) %>% 
+  group_by(isae_consult) %>% 
+  dplyr::summarize(n())
+
+#Asked about infant health challenges/questions
+completedata_screen %>% filter(Alive.Death.Category=="Death2" & Age.at.death < 29) %>% 
+  group_by(sm_consultwhat2) %>% 
+  dplyr::summarize(n())
+
+#Asked about pregnancy questions/concerns
+completedata_screen %>% filter(Alive.Death.Category=="Death2" & Age.at.death < 29) %>% 
+  group_by(sm_consultwhat1) %>% 
+  dplyr::summarize(n())
+
+#Didn't consult with the nurse beause I "didn't think about it/forgot"
+completedata_screen %>% filter(Alive.Death.Category=="Death2" & Age.at.death < 29) %>% 
+    group_by(consultnotwhy1) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter(Alive.Death.Category=="Death2" & Age.at.death < 29) %>% 
+    group_by(isae_consultnotwhy1) %>% 
+dplyr::summarize(n())
+
+
+#Consulted a nurse via SMS about pregnancy or delivery at any time
+completedata_screen %>% filter(Alive.Death.Category=="Death2" & Age.at.death < 29) %>% 
+    group_by(dr_consult) %>% 
+dplyr::summarize(n())
+
+
+
+```
+Among those with neonatal death after discharge home including those with unknown death locations [death 2 + death 4] (n=9)
+
+```{r}
+# had a follow up visit
+completedata_screen %>% filter((Alive.Death.Category=="Death2" | Alive.Death.Category=="Death4") & Age.at.death < 29) %>% 
+  dplyr::select(ptidno, SAE.Type, sm_smsreceivepreg, sm_smsreceivewk1pp, sm_smsreceiveafterwk1pp, sm_smsreponse, sm_smsdiscuss, sm_consult, fp_currentpreg) %>% 
+  group_by(sm_consult) %>% 
+  dplyr::summarize(n())
+
+#Consulted nurse via SMS at any time
+completedata_screen %>% filter((Alive.Death.Category=="Death2" | Alive.Death.Category=="Death4") & Age.at.death < 29) %>%  
+  group_by(sm_consult) %>% 
+  dplyr::summarize(n())
+
+completedata_screen %>% filter((Alive.Death.Category=="Death2" | Alive.Death.Category=="Death4") & Age.at.death < 29) %>% 
+  group_by(isae_consult) %>% 
+  dplyr::summarize(n())
+
+#Asked about infant health challenges/questions
+completedata_screen %>% filter((Alive.Death.Category=="Death2" | Alive.Death.Category=="Death4") & Age.at.death < 29) %>% 
+  group_by(sm_consultwhat2) %>% 
+  dplyr::summarize(n())
+
+#Asked about pregnancy questions/concerns
+completedata_screen %>% filter((Alive.Death.Category=="Death2" | Alive.Death.Category=="Death4") & Age.at.death < 29) %>% 
+  group_by(sm_consultwhat1) %>% 
+  dplyr::summarize(n())
+
+#Didn't consult with the nurse because I "didn't think about it/forgot"
+completedata_screen %>% filter((Alive.Death.Category=="Death2" | Alive.Death.Category=="Death4") & Age.at.death < 29) %>% 
+    group_by(consultnotwhy1) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>% filter((Alive.Death.Category=="Death2" | Alive.Death.Category=="Death4") & Age.at.death < 29) %>% 
+    group_by(isae_consultnotwhy1) %>% 
+dplyr::summarize(n())
+
+
+#Consulted a nurse via SMS about pregnancy or delivery at any time
+completedata_screen %>% filter((Alive.Death.Category=="Death2" | Alive.Death.Category=="Death4") & Age.at.death < 29) %>% 
+    group_by(dr_consult) %>% 
+dplyr::summarize(n())
+
+
+```
+
+
+
+Among those with infant death after discharge including unknown death location (n=11)
+
+```{r}
+completedata_screen$Age.at.death <- as.numeric(completedata_screen$Age.at.death)
+
+## include Death2: discharged from hospital, Death 3: 49 month old who died during rehospitalization, Death 4: Unknown location/timing of death
+
+
+#Had follow-up visit
+completedata_screen %>% filter(Alive.Death.Category=="Death2" | Alive.Death.Category=="Death4" | Alive.Death.Category=="Death3")%>% 
+  dplyr::select(ptidno, SAE.Type, sm_smsreceivepreg, sm_smsreceivewk1pp, sm_smsreceiveafterwk1pp, sm_smsreponse, sm_smsdiscuss, sm_consult, fp_currentpreg) %>% 
+  group_by(sm_consult) %>% 
+  dplyr::summarize(n())
+
+#Consulted nurse via SMS at any time
+completedata_screen %>%  filter(Alive.Death.Category=="Death2" | Alive.Death.Category=="Death4" | Alive.Death.Category=="Death3") %>% 
+  group_by(sm_consult) %>% 
+  dplyr::summarize(n())
+
+completedata_screen %>% filter(Alive.Death.Category=="Death2" | Alive.Death.Category=="Death4" | Alive.Death.Category=="Death3") %>% 
+  group_by(isae_consult) %>% 
+  dplyr::summarize(n())
+
+#Asked about infant health challenges/questions
+completedata_screen %>% filter(Alive.Death.Category=="Death2" | Alive.Death.Category=="Death4" | Alive.Death.Category=="Death3") %>% 
+  group_by(sm_consultwhat2) %>% 
+  dplyr::summarize(n())
+
+#Asked about pregnancy questions/concerns
+completedata_screen %>% filter(Alive.Death.Category=="Death2" | Alive.Death.Category=="Death4" | Alive.Death.Category=="Death3") %>% 
+  group_by(sm_consultwhat1) %>% 
+  dplyr::summarize(n())
+
+#Didn't consult with the nurse beause I "didn't think about it/forgot"
+completedata_screen %>% filter(Alive.Death.Category=="Death2" | Alive.Death.Category=="Death4" | Alive.Death.Category=="Death3") %>% 
+    group_by(consultnotwhy1) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>%  filter(Alive.Death.Category=="Death2" | Alive.Death.Category=="Death4" | Alive.Death.Category=="Death3") %>% 
+    group_by(isae_consultnotwhy1) %>% 
+dplyr::summarize(n())
+
+
+#Consulted a nurse via SMS about pregnancy or delivery at any time
+completedata_screen %>% filter(Alive.Death.Category=="Death2" | Alive.Death.Category=="Death4" | Alive.Death.Category=="Death3") %>% 
+    group_by(dr_consult) %>% 
+dplyr::summarize(n())
+
+```
+
+Among those with no infant death  (n=)
+
+```{r}
+#Had follow-up visit
+completedata_screen %>% filter(perideaths==0) %>% 
+  dplyr::select(ptidno, SAE.Type, sm_smsreceivepreg, sm_smsreceivewk1pp, sm_smsreceiveafterwk1pp, sm_smsreponse, sm_smsdiscuss, sm_consult, fp_currentpreg) %>% 
+  group_by(sm_consult) %>% 
+  dplyr::summarize(n())
+
+#Consulted nurse via SMS at any time
+completedata_screen %>%  filter(perideaths==0) %>% 
+  group_by(sm_consult) %>% 
+  dplyr::summarize(n())
+
+completedata_screen %>% filter(perideaths==0) %>% 
+  group_by(isae_consult) %>% 
+  dplyr::summarize(n())
+
+#Asked about infant health challenges/questions
+completedata_screen %>% filter(perideaths==0) %>% 
+  group_by(sm_consultwhat2) %>% 
+  dplyr::summarize(n())
+
+#Asked about pregnancy questions/concerns
+completedata_screen %>% filter(perideaths==0) %>% 
+  group_by(sm_consultwhat1) %>% 
+  dplyr::summarize(n())
+
+#Didn't consult with the nurse because I "didn't think about it/forgot" (answer 1)
+completedata_screen %>% filter(perideaths==0) %>% 
+    group_by(consultnotwhy1) %>% 
+dplyr::summarize(n())
+
+completedata_screen %>%  filter(perideaths==0) %>% 
+    group_by(isae_consultnotwhy1) %>% 
+dplyr::summarize(n())
+
+## section about asking questions about delivery or miscarriage
+#Consulted a nurse via SMS about pregnancy or delivery at any time
+completedata_screen %>% filter(perideaths==0) %>% 
+    group_by(dr_consult) %>% 
+dplyr::summarize(n())
+
+```
+
+Ttest comparing infant death to no infant death
+```{r}
+#had follow up 
+prop_test <- prop.test(x = c(630, 8), n = c(765, 11))
+prop_test 
+
+#Consulted nurse via SMS at any time during study
+prop_test <- prop.test(x = c(454, 4), n = c(630, 8))
+prop_test 
+
+# Asked about infant health challenges/questions
+prop_test <- prop.test(x = c(335, 1), n = c(454, 4))
+prop_test 
+
+# Asked about pregnancy questions/concerns
+prop_test <- prop.test(x = c(397, 3), n = c(454, 4))
+prop_test 
+
+# Didn't consult with the nurse because I "didn't think about it/forgot"
+prop_test <- prop.test(x = c(63, 1), n = c(140, 4))
+prop_test 
+
+#Consulted a nurse via SMS about pregnancy or delivery at any time (same as #5?)
+
+prop_test <- prop.test(x = c(349, 5), n = c(630, 8))
+prop_test 
+```
+
+
+# 
+```{r}
+alldump <- read.csv("SMS messages.csv")
+alldump$time <- as.Date(as.character(alldump$timestamp), '%Y-%m-%d')
+
+alldump$deliverydate <- as.Date(alldump$deliv_Date)
+alldump$time1 <- as.Date(alldump$time)
+alldump$enrollmentdate <- as.Date(alldump$enr_Date)
+
+```
+
+Get adjusted RR (by site) and median IQR for neonatal deaths/no neonatal deaths
+```{r, linlog for neonatal deaths}
+all_sms <- alldump %>% 
+  filter(sent_by=="participant", !is.na(neodeath)) %>% 
+  mutate(sms_before_delivery = ifelse(deliv_Date - time > 0, 1, 0),
+         num_weeks = as.numeric(deliv_Date - enr_Date)/7) %>% 
+  arrange(pid) %>% dplyr::select(pid, sms_before_delivery, time, deliv_Date, enr_Date, num_weeks)
+
+
+cum_sms <- all_sms %>%  dplyr::group_by(pid) %>% 
+ dplyr::summarise(cum_sms_by_delivery=sum(sms_before_delivery))
+
+number_weeks1 <- all_sms %>% select(pid, num_weeks) %>% group_by(pid)
+number_weeks <- unique(number_weeks1)
+
+smsperweek1 <- left_join(cum_sms, number_weeks, by = 'pid') %>% 
+  mutate(sms_per_week = cum_sms_by_delivery/num_weeks)
+
+completedata_screen$pid <- as.numeric(str_sub(completedata_screen$ptidno, -3, -1))
+
+completedata <- left_join(completedata_screen, smsperweek1, by = "pid") %>% 
+  dplyr::select(pid, sms_per_week, cum_sms_by_delivery, num_weeks, perideaths, neodeath, stillbirth, group3en_scrid_site)
+
+# need to capture the people who did not send SMS as 0 in dataset to be able to run regression
+completedata_neo <- completedata %>% filter(!is.na(neodeath)) %>% 
+                          mutate(sms_per_week = ifelse(is.na(sms_per_week), 0, sms_per_week))
+
+neodeath_reg_univ <- glm(neodeath ~ sms_per_week + factor(group3en_scrid_site), data=completedata_neo, family=binomial(link="log"))
+  rob <- coeftest(neodeath_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+x <- completedata_neo %>% filter(neodeath==1)
+y <- completedata_neo %>% filter(neodeath==0)
+
+# median IQR for neonatal deaths
+summary(x$sms_per_week, na.rm = TRUE)
+
+# median IQR for non-neonatal deaths
+summary(y$sms_per_week, na.rm = TRUE)
+
+```
+T test comparing sites
+```{r}
+t_test <- t.test(completedata_neo$sms_per_week[completedata_neo$group3en_scrid_site=="Mathare"], completedata_neo$sms_per_week[completedata_neo$group3en_scrid_site=="Rachuonyo"], var.equal = TRUE)
+t_test
+```
+
+Table 2: Number of participant SMS per week before delivery for stillbirths
+
+```{r}
+all_sms_stillbirth <- alldump %>% 
+  filter(sent_by=="participant", !is.na(stillbirth)) %>% 
+  mutate(sms_before_delivery = ifelse(as.Date(deliverydate) - as.Date(time1) > 0, 1, 0),
+         num_weeks = as.numeric(as.Date(deliverydate) - as.Date(enrollmentdate))/7) %>% 
+  arrange(pid) %>% dplyr::select(pid, sms_before_delivery, time, deliv_Date, enr_Date, num_weeks)
+length(all_sms_stillbirth)
+
+cum_sms <- all_sms_stillbirth %>%  dplyr::group_by(pid) %>% 
+ dplyr::summarise(cum_sms_by_delivery=sum(sms_before_delivery))
+
+number_weeks1 <- all_sms_stillbirth %>% dplyr::select(pid, num_weeks) %>% group_by(pid)
+number_weeks <- unique(number_weeks1)
+
+smsperweek1 <- left_join(cum_sms, number_weeks, by = 'pid') %>% 
+  mutate(sms_per_week = cum_sms_by_delivery/num_weeks)
+
+completedata_screen$pid <- as.numeric(str_sub(completedata_screen$ptidno, -3, -1))
+
+completedata <- left_join(completedata_screen, smsperweek1, by = "pid") %>% 
+  dplyr::select(pid, sms_per_week, cum_sms_by_delivery, num_weeks, perideaths, neodeath, stillbirth, group3en_scrid_site)
+
+# need to capture the people who did not send SMS as 0 in dataset to be able to run regression
+completedata_stillbirth <- completedata %>% filter(!is.na(stillbirth)) %>% 
+                          mutate(sms_per_week = ifelse(is.na(sms_per_week), 0, sms_per_week))
+
+library(lmtest)
+library(sandwich)
+
+stillbirth_reg_univ <- glm(stillbirth ~ sms_per_week + factor(group3en_scrid_site), data=completedata_stillbirth, family=binomial(link="log"))
+  rob <- coeftest(stillbirth_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 3)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 3));(p <- round(rob[2,4], 3))
+  
+x <- completedata_stillbirth %>% filter(stillbirth==1)
+y <- completedata_stillbirth %>% filter(stillbirth==0)
+
+# median IQR for neonatal deaths
+summary(x$sms_per_week, na.rm = TRUE)
+
+# median IQR for non-neonatal deaths
+summary(y$sms_per_week, na.rm = TRUE)
+
+```
+
+Table: Number of participant SMS per week before delivery for hospitalizations
+
+```{r}
+all_sms_hosp <- alldump %>% 
+  filter(sent_by=="participant", !is.na(hosp)) %>% 
+  mutate(sms_before_delivery = ifelse((deliverydate - time1 > 0), 1, 0),
+         num_weeks = as.numeric(deliverydate - enrollmentdate)/7) %>% 
+  arrange(pid) %>% dplyr::select(pid, sms_before_delivery, time, deliv_Date, enr_Date, num_weeks)
+
+length(all_sms_hosp)
+
+cum_sms <- all_sms_hosp %>%  dplyr::group_by(pid) %>% 
+ dplyr::summarise(cum_sms_by_delivery=sum(sms_before_delivery))
+
+number_weeks1 <- all_sms_hosp %>% dplyr::select(pid, num_weeks) %>% group_by(pid)
+number_weeks <- unique(number_weeks1)
+
+smsperweek1 <- left_join(cum_sms, number_weeks, by = 'pid') %>% 
+  mutate(sms_per_week = cum_sms_by_delivery/num_weeks)
+
+completedata_screen$pid <- as.numeric(str_sub(completedata_screen$ptidno, -3, -1))
+
+# Take out the one hospitalization that resulted in death
+completedata_screen$hosp[completedata_screen$ptidno==42460687] <- NA
+
+completedata <- left_join(completedata_screen, smsperweek1, by = "pid") %>% 
+  dplyr::select(pid, sms_per_week, cum_sms_by_delivery, num_weeks, perideaths, neodeath, hosp, stillbirth, group3en_scrid_site)
+
+# need to capture the people who did not send SMS as 0 in dataset to be able to run regression
+completedata_hosp <- completedata %>% filter(!is.na(hosp)) %>% 
+                          mutate(sms_per_week = ifelse(is.na(sms_per_week), 0, sms_per_week))
+
+library(lmtest)
+library(sandwich)
+
+hosp_reg_univ <- glm(hosp ~ sms_per_week + factor(group3en_scrid_site), data=completedata_hosp, family=binomial(link="log"))
+  rob <- coeftest(hosp_reg_univ, vcov. = vcovHAC);
+  (PR <- round(exp(rob[2,1]), 2));(lower <- round(exp(rob[2,1]+qnorm(0.025)*rob[2,2]), 2)); (upper <- round(exp(rob[2,1]+qnorm(0.975)*rob[2,2]), 2));(p <- round(rob[2,4], 2))
+  
+x <- completedata_hosp %>% filter(hosp==1)
+y <- completedata_hosp %>% filter(hosp==0)
+
+# median IQR for hospitalizations
+summary(x$sms_per_week, na.rm = TRUE)
+
+# median IQR for no hospitalizations
+summary(y$sms_per_week, na.rm = TRUE)
+
+```
+
+
+Table 1: Number of messages per week sent in antenatal period: for all participants
+```{r, overallpop}
+
+all_sms <- alldump %>% 
+  filter(sent_by=="participant")%>% 
+  dplyr::mutate(sms_before_delivery = ifelse(as.numeric(as.Date(deliv_Date) - as.Date(time)) > 0, 1, 0),
+         num_weeks = as.numeric(as.Date(deliv_Date) - as.Date(enr_Date))/7) %>% 
+  arrange(pid) %>% dplyr::select(pid, sms_before_delivery, time, deliv_Date, enr_Date, num_weeks)
+
+cum_sms <- all_sms %>%  dplyr::group_by(pid) %>% 
+ dplyr::summarise(cum_sms_by_delivery=sum(sms_before_delivery))
+
+number_weeks1 <- all_sms %>% select(pid, num_weeks) %>% group_by(pid)
+number_weeks <- unique(number_weeks1)
+
+smsperweek1 <- left_join(cum_sms, number_weeks, by = 'pid') %>% 
+  mutate(sms_per_week = cum_sms_by_delivery/num_weeks)
+
+# add in 60 participants who didn't send any SMS before delivery. 737 is the number of rows in smsperweek1
+sms1 <- smsperweek1$sms_per_week
+sms2 <- rep(0, times = 60)
+sms <- c(sms1, sms2)
+
+summary(sms)
+
+```
+Number of messages per week sent in antenatal period: for rural participants
+
+```{r, ruralpop}
+rural_sms <- alldump %>% 
+  filter(sent_by=="participant", group3en_scrid_site=="Rachuonyo")%>% 
+  mutate(sms_before_delivery = ifelse(as.numeric(as.Date(deliv_Date) - as.Date(time)) > 0, 1, 0),
+         num_weeks = as.numeric(as.Date(deliv_Date) - as.Date(enr_Date))/7) %>% 
+  arrange(pid) %>% dplyr::select(pid, sms_before_delivery, time, deliv_Date, enr_Date, num_weeks)
+
+
+cum_sms <- rural_sms %>%  dplyr::group_by(pid) %>% 
+ dplyr::summarise(cum_sms_by_delivery=sum(sms_before_delivery))
+
+number_weeks1 <- rural_sms %>% select(pid, num_weeks) %>% group_by(pid)
+number_weeks <- unique(number_weeks1)
+
+smsperweek1 <- left_join(cum_sms, number_weeks, by = 'pid') %>% 
+  mutate(sms_per_week = cum_sms_by_delivery/num_weeks)
+
+# add in participants who didn't send any SMS before delivery
+304-266 # 38 participants without SMS before delivery. 304 is the number of rural participants and 266 is the number from smsperweek1
+sms1 <- smsperweek1$sms_per_week
+sms2 <- rep(0, times = 38)
+sms <- c(sms1, sms2)
+
+summary(sms)
+```
+
+Number of messages per week sent in antenatal period: for urban participants
+
+```{r, urbanpop}
+urban_sms <- alldump %>% 
+  filter(sent_by=="participant", group3en_scrid_site=="Mathare")%>% 
+  mutate(sms_before_delivery = ifelse(as.numeric(as.Date(deliv_Date) - as.Date(time)) > 0, 1, 0),
+         num_weeks = as.numeric(as.Date(deliv_Date) - as.Date(enr_Date))/7) %>% 
+  arrange(pid) %>% dplyr::select(pid, sms_before_delivery, time, deliv_Date, enr_Date, num_weeks)
+
+cum_sms <- urban_sms %>%  dplyr::group_by(pid) %>% 
+ dplyr::summarise(cum_sms_by_delivery=sum(sms_before_delivery))
+
+number_weeks1 <- urban_sms %>% select(pid, num_weeks) %>% group_by(pid)
+number_weeks <- unique(number_weeks1)
+
+smsperweek1 <- left_join(cum_sms, number_weeks, by = 'pid') %>% 
+  mutate(sms_per_week = cum_sms_by_delivery/num_weeks)
+
+# add in participants who didn't send any SMS before delivery
+494-468 # there are 26 participants without SMS before delivery. 494 is the number of rural participants and 468 is the number from smsperweek1
+sms1 <- smsperweek1$sms_per_week
+sms2 <- rep(0, times = 26)
+sms <- c(sms1, sms2)
+
+summary(sms)
+```
+Sent at least one message to study nurse
+```{r}
+sms_one <- alldump %>% 
+  filter(sent_by=="participant")
+View(sms_one)
+length(unique(sms_one$pid))
+       
+# Rural site  
+sms_one_rural <- alldump %>% 
+  filter(sent_by=="participant", group3en_scrid_site=="Rachuonyo")
+
+ruralsites <- alldump %>% filter(group3en_scrid_site=="Rachuonyo")
+
+#% of rural participants who sent at least 1 message
+length(unique(sms_one_rural$pid))/length(unique(ruralsites$pid))
+
+# Urban site  
+sms_one_urban <- alldump %>% 
+  filter(sent_by=="participant", group3en_scrid_site=="Mathare")
+
+urbansites <- alldump %>% filter(group3en_scrid_site=="Mathare")
+length(unique(urbansites$pid))
+length(unique(sms_one_urban$pid))
+
+prop_test <- prop.test(x = c(266, 468), n = c(303, 493))
+prop_test 
+
+```
+
+
+
+
+
